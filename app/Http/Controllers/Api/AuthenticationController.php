@@ -140,14 +140,18 @@ class AuthenticationController extends Controller
     }
     protected function getRefreshTokenCookie($token)
     {
-        return cookie(
+    $isProduction = app()->environment('production');
+
+    return cookie(
             'refresh_token',
             $token,
-            config('jwt.refresh_ttl', 20160), // 2 weeks in minutes (default)
-            null,
-            null,
-            true,  // Secure: only over HTTPS
-            true   // HttpOnly: not accessible via JS
+            config('jwt.refresh_ttl', 20160), // 2 weeks
+            '/', // path
+            null, // domain (adjust if needed)
+            true, // secure (HTTPS only)
+            true, // httpOnly
+            false,
+            'None' // sameSite
         );
     }
 
