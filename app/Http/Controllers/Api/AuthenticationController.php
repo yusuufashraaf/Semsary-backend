@@ -35,8 +35,8 @@ class AuthenticationController extends Controller
             'email'         => $request->email,
             'password'      => bcrypt($request->password),
             'phone_number'  => $request->phone_number,
-            'role'          => $request->role ?? 'user', // Default to 'user' if not provided
-            'status'        => 'pending', // Default status
+            'role'          => $request->role ?? 'user', // Default is user
+            'status'        => 'pending', // Default is pending
         ]);
 
         return response()->json(['message' => 'User registered successfully', 'user' => $user], 201);
@@ -52,11 +52,13 @@ class AuthenticationController extends Controller
         }
 
         $user = auth('api')->user();
-        $refreshToken = Str::random(60); // Generate a new refresh token
+        $refreshToken = Str::random(60);
+        // Generate a new refresh token
 
         // Store the refresh token in the refresh_tokens table
         $this->storeRefreshToken($user, $refreshToken);
 
+        // i will send access token in json and refresh in cookie
         return $this->respondWithToken($accessToken)
             ->withCookie($this->getRefreshTokenCookie($refreshToken));
     }
