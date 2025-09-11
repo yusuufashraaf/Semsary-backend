@@ -24,7 +24,16 @@ class PropertyController extends Controller
      */
     public function index()
     {
-        $properties = Property::with(['images', 'documents'])->get();
+        $user = auth('api')->user();
+        if($user->role === 'owner'){
+            $properties = Property::with(['images', 'documents', 'features'])->where('owner_id', $user->id)->get();
+            if($properties->isEmpty()){
+                return response()->json(['message' => 'No properties found for this owner'], 404);
+            }
+        }else{
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        
         return response()->json([
             'message'=>'Properties fetched successfully',
             'data' => $properties], 200);
@@ -84,7 +93,12 @@ class PropertyController extends Controller
 
      public function store(StorePropertyRequest $request): JsonResponse
      {
+        $user = auth('api')->user();
+        if ($user->role !== 'owner') {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
         $data = $request->validated();
+        $data['owner_id'] = auth('api')->id();
         
         $property = Property::create($data);
         
@@ -170,7 +184,14 @@ class PropertyController extends Controller
      */
     public function show(string $id)
     {
-        $property = Property::with(['images', 'documents'])->find($id);
+        $user = auth('api')->user();
+        if ($user->role !== 'owner') {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        $property = Property::where('id', $id)
+                        ->where('owner_id', auth()->id()) 
+                        ->with(['images','documents','features'])
+                        ->first();
         if (!$property) {
             return response()->json(['message' => 'Property not found'], 404);
         }
@@ -194,6 +215,17 @@ class PropertyController extends Controller
 public function update(UpdatePropertyRequest $request, Property $property): JsonResponse
 {
     $data = $request->validated();
+    
+    $user = auth('api')->user();
+    if ($user->role !== 'owner') {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+    if($user->role === 'owner' && $property->owner_id !== $user->id){
+        return response()->json([
+            'message' => 'You are not allowed to edit this property'
+        ], 403);
+    }
 
     DB::beginTransaction();
     try {
@@ -373,6 +405,15 @@ public function update(UpdatePropertyRequest $request, Property $property): Json
     // }
     public function destroy(Property $property): JsonResponse
 {
+    $user = auth('api')->user();
+    if ($user->role !== 'owner') {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+    if($user->role === 'owner' && $property->owner_id !== $user->id){
+        return response()->json([
+            'message' => 'You are not allowed to delete this property'
+        ], 403);
+    }
     // Delete images from Cloudinary + DB
     foreach ($property->images as $image) {
         if ($image->public_id) {

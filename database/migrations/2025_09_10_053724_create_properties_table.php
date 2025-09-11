@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('properties', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('user_id')->nullable();  
+            $table->unsignedBigInteger('owner_id')->nullable();  
             $table->string('title',200);
             $table->text('description');
             $table->enum('type', ['Apartment', 'Villa','Duplex', 'Roof', 'Land']);
@@ -23,7 +23,7 @@ return new class extends Migration
             $table->integer('size');
             $table->enum('property_state', ['Valid', 'Invalid', 'Pending', 'Rented', 'Sold'])->default('Pending');
             $table->timestamps();
-            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
+            $table->foreign('owner_id')->references('id')->on('users')->onDelete('cascade');
         });
     }
 
