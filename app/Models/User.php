@@ -2,21 +2,30 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Passport\HasApiTokens;
 use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject;
 
 class User extends Authenticatable implements JWTSubject
 {
+    use Notifiable,HasApiTokens, HasFactory;
+
     protected $fillable = [
-        'first_name',
+         'first_name',
         'last_name',
         'email',
         'password',
-        'role',
         'phone_number',
+        'role',
         'status',
-        'phone_verified_at',
+        'email_otp',
+        'email_otp_expires_at',
+        'whatsapp_otp',
+        'whatsapp_otp_expires_at',
         'email_verified_at',
+        'phone_verified_at'
     ];
 
     protected $hidden = [

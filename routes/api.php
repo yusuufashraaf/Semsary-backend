@@ -10,6 +10,8 @@ Route::post('/login', [AuthenticationController::class, 'login']);
 
 Route::post('/refresh', [AuthenticationController::class, 'refresh']);
 
+Route::post('/verify-email', [AuthenticationController::class, 'verifyEmailOtp']);
+Route::post('/resend-email-otp', [AuthenticationController::class, 'resendEmailOtp']);
 // Protected routes
 Route::middleware('auth:api')->group(function () {
     Route::post('profile', [AuthenticationController::class, 'profile']);

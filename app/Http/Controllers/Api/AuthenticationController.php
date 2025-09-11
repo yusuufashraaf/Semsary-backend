@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\UserResource;
+use App\Jobs\sendOTPJOB;
 use App\Models\RefreshToken;
 use App\Models\User;
 use Carbon\Carbon;
@@ -29,6 +31,9 @@ class AuthenticationController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
+        $emailOtp = rand(100000, 999999);
+        $emailOtpExpiresAt = now()->addMinutes(10);
+
         $user = User::create([
             'first_name'    => $request->first_name,
             'last_name'     => $request->last_name,
@@ -37,10 +42,78 @@ class AuthenticationController extends Controller
             'phone_number'  => $request->phone_number,
             'role'          => $request->role ?? 'user', // Default is user
             'status'        => 'pending', // Default is pending
+            'email_otp' => $emailOtp,
+            'email_otp_expires_at' => $emailOtpExpiresAt,
         ]);
+        sendOTPJOB::dispatch($user);
 
-        return response()->json(['message' => 'User registered successfully', 'user' => $user], 201);
+        return response()->json(
+            [
+                'message' => 'User registered successfully',
+                 'user' => new UserResource($user)
+            ], 201);
     }
+     public function verifyEmailOtp(Request $request)
+        {
+            $validator = Validator::make($request->all(), [
+                'user_id' => 'required|integer|exists:users,id',
+                'otp'     => 'required|string|min:6|max:6',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(['errors' => $validator->errors()], 422);
+            }
+
+            $user = User::find($request->user_id);
+
+            // to sure the user's email is not already verified
+            if ($user->email_verified_at) {
+                return response()->json(['message' => 'Email is already verified.'], 400);
+            }
+
+            // Check 1: Code Match & Check 2: Expiration
+            if ($user->email_otp !== $request->otp || now()->isAfter($user->email_otp_expires_at)) {
+                return response()->json(['message' => 'Invalid or expired verification code.'], 422);
+            }
+
+            // Verification Email successful
+            $user->update([
+                'email_verified_at' => now(),
+                'email_otp' => null,
+                'email_otp_expires_at' => null,
+            ]);
+
+            return response()->json(['message' => 'Email verified successfully']);
+        }
+        public function resendEmailOtp(Request $request)
+        {
+            $validator = Validator::make($request->all(), [
+                'user_id' => 'required|integer|exists:users,id',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(['errors' => $validator->errors()], 422);
+            }
+
+            $user = User::find($request->user_id);
+
+            if ($user->email_verified_at) {
+                return response()->json(['message' => 'Email is already verified.'], 400);
+            }
+
+            $emailOtp = rand(100000, 999999);
+            $emailOtpExpiresAt = now()->addMinutes(10);
+
+            $user->update([
+                'email_otp' => $emailOtp,
+                'email_otp_expires_at' => $emailOtpExpiresAt,
+            ]);
+
+            sendOTPJOB::dispatch($user);
+
+            return response()->json(['message' => 'A new verification code has been sent to your email.']);
+        }
+
 
     // Login user and return JWT token
     public function login(Request $request)
@@ -115,18 +188,26 @@ class AuthenticationController extends Controller
         $tokenRecord->delete(); // Remove the old refresh token
         $this->storeRefreshToken($user, $newRefreshToken);
 
-        return $this->respondWithToken($accessToken)
+        return $this->respondWithToken($accessToken, new UserResource($user))
             ->withCookie($this->getRefreshTokenCookie($newRefreshToken));
     }
 
     // Return token response structure
-    protected function respondWithToken($token)
+    protected function respondWithToken($token, $userResource = null)
     {
-        return response()->json([
+        $response = [
             'access_token' => $token,
             'token_type'   => 'bearer',
             'expires_in'   => auth('api')->factory()->getTTL() * 60,
-        ]);
+        ];
+
+        // If a user resource is provided, merge it into the response.
+        if ($userResource) {
+            // 'user' => $userResource will add the user object under the 'user' key.
+            $response['user'] = $userResource;
+        }
+
+        return response()->json($response);
     }
      protected function storeRefreshToken($user, $token)
     {
@@ -154,5 +235,6 @@ class AuthenticationController extends Controller
             'None' // sameSite
         );
     }
+
 
 }
