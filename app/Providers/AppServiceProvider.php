@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\CloudinaryService;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -9,10 +10,13 @@ class AppServiceProvider extends ServiceProvider
     /**
      * Register any application services.
      */
-    public function register(): void
-    {
-        //
-    }
+  // app/Providers/AppServiceProvider.php
+public function register()
+{
+    $this->app->singleton(CloudinaryService::class, function ($app) {
+        return new CloudinaryService();
+    });
+}
 
     /**
      * Bootstrap any application services.
