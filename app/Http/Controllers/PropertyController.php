@@ -1,0 +1,404 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Http\Requests\StorePropertyRequest;
+use App\Http\Requests\UpdatePropertyRequest;
+use App\Models\Property;
+use CloudinaryLabs\CloudinaryLaravel\Facades\Cloudinary;
+use App\Services\CloudinaryService;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+
+class PropertyController extends Controller
+{
+     protected $cloudinaryService;
+
+    public function __construct(CloudinaryService $cloudinaryService)
+    {
+        $this->cloudinaryService = $cloudinaryService;
+    }
+    /**
+     * Display a listing of the resource.
+     */
+    public function index()
+    {
+        $properties = Property::with(['images', 'documents'])->get();
+        return response()->json([
+            'message'=>'Properties fetched successfully',
+            'data' => $properties], 200);
+    }
+
+    /**
+     * Store a newly created resource in storage.
+     */
+    // public function store(StorePropertyRequest $request)
+    // {
+    //     $data = $request->validated();
+
+    //     $property = Property::create($data);
+
+
+    //     if($request->has('features')){
+    //         foreach($request->features as $feature){
+    //             $property->features()->create(['name' => $feature]);
+    //         }
+            
+    //     }
+    //     if($request->hasFile('images')){
+    //         foreach($request->file('images') as $file){
+    //             $uploadedFile = Cloudinary::upload(
+    //             $file->path(),
+    //             ['folder' => 'properties/images']
+    //         )->getSecurePath();
+    //             $property->images()->create([
+    //                 'image_url' => $uploadedFile,
+    //                 'image_type' => $file->getClientMimeType(),
+    //                 'order_index' => 0,
+    //                 'description' => ''
+    //             ]);
+    //         }
+    //     }
+        
+        
+
+    //       if ($request->hasFile('documents')) {
+    //         foreach ($request->file('documents') as $file) {
+    //         $uploadedFile = Cloudinary::uploadFile(
+    //             $file->getRealPath(),
+    //             ['folder' => 'properties/documents']
+    //         )->getSecurePath();
+
+    //         $property->documents()->create([
+    //             'document_url' => $uploadedFile,
+    //             'document_type' => $file->getClientMimeType(),
+    //         ]);
+    //     }
+    // }
+    //     return response()->json([
+    //         'message'=>'Property created successfully',
+    //         'data'=>$property->load(['features', 'documents', 'images'])],
+    //          201);
+    // }
+
+     public function store(StorePropertyRequest $request): JsonResponse
+     {
+        $data = $request->validated();
+        
+        $property = Property::create($data);
+        
+        // Handle features
+        if ($request->has('features')) {
+            $property->features()->sync($request->features); 
+        }
+        
+        // Handle image uploads using CloudinaryService
+        if ($request->hasFile('images')) {
+            $orderIndex = 0;
+            foreach ($request->file('images') as $file) {
+                $result = $this->cloudinaryService->uploadFile(
+                    $file, 
+                    'properties/images',
+                    [
+                        'transformation' => [
+                            'quality' => 'auto',
+                            'fetch_format' => 'auto',
+                        ]
+                    ]
+                );
+                
+                if ($result['success']) {
+                    $property->images()->create([
+                        'image_url' => $result['url'],
+                        'public_id' => $result['public_id'], // Store public_id for deletion
+                        'image_type' => $result['format'],
+                        'order_index' => $orderIndex++,
+                        'description' => '',
+                        'original_filename' => $result['original_filename'],
+                        'size' => $result['size'],
+                        'width' => $result['width'],
+                        'height' => $result['height']
+                    ]);
+                } else {
+                    // Handle upload failure
+                    return response()->json([
+                        'message' => 'Image upload failed: ' . $result['error'],
+                        'success' => false
+                    ], 400);
+                }
+            }
+        }
+        
+        // Handle document uploads using CloudinaryService
+        if ($request->hasFile('documents')) {
+            foreach ($request->file('documents') as $file) {
+                $result = $this->cloudinaryService->uploadFile(
+                    $file,
+                    'properties/documents'
+                );
+                
+                if ($result['success']) {
+                    $property->documents()->create([
+                        'document_url' => $result['url'],
+                        'public_id' => $result['public_id'], // Store public_id for deletion
+                        'document_type' => $result['format'],
+                        'original_filename' => $result['original_filename'],
+                        'size' => $result['size']
+                    ]);
+                } else {
+                    // Handle upload failure
+                    return response()->json([
+                        'message' => 'Document upload failed: ' . $result['error'],
+                        'success' => false
+                    ], 400);
+                }
+            }
+        }
+        
+        return response()->json([
+            'message' => 'Property created successfully',
+            'data' => $property->load(['features', 'documents', 'images']),
+            'success' => true
+        ], 201);
+    
+     }
+
+
+    /**
+     * Display the specified resource.
+     */
+    public function show(string $id)
+    {
+        $property = Property::with(['images', 'documents'])->find($id);
+        if (!$property) {
+            return response()->json(['message' => 'Property not found'], 404);
+        }
+        return response()->json($property, 200);
+    }
+
+    /**
+     * Update the specified resource in storage.
+     */
+    // public function update(Request $request, string $id)
+    // {
+    //     $property = Property::find($id);
+    //     if (!$property) {
+    //         return response()->json(['message' => 'Property not found'], 404);
+    //     }
+    //     $property->update($request->all());
+    //     return response()->json($property, 200);
+    // }
+
+
+public function update(UpdatePropertyRequest $request, Property $property): JsonResponse
+{
+    $data = $request->validated();
+
+    DB::beginTransaction();
+    try {
+        // 1) Update main fields (ignore files & relations from this array)
+        $property->update($data);
+
+        // 2) Sync features if provided
+        if ($request->has('features')) {
+            $property->features()->sync($request->features);
+        }
+
+        // 3) Delete specific images if requested
+        if ($request->filled('delete_images')) {
+            foreach ($request->delete_images as $imgId) {
+                $img = $property->images()->find($imgId);
+                if ($img) {
+                    if (!empty($img->public_id)) {
+                        $this->cloudinaryService->deleteFile($img->public_id);
+                    }
+                    $img->delete();
+                }
+            }
+        }
+
+        // 4) Replace specific images: expect replace_images[i][id] and replace_images[i][file]
+        if ($request->has('replace_images')) {
+            foreach ($request->replace_images as $i => $entry) {
+                $imgId = $entry['id'] ?? null;
+                if (!$imgId) continue;
+
+                $imageModel = $property->images()->find($imgId);
+                if (!$imageModel) continue;
+
+                // file will be in request->file("replace_images.$i.file")
+                $file = $request->file("replace_images.$i.file");
+                if (!$file) continue;
+
+                // delete old from Cloudinary
+                if (!empty($imageModel->public_id)) {
+                    $this->cloudinaryService->deleteFile($imageModel->public_id);
+                }
+
+                // upload new file
+                $res = $this->cloudinaryService->uploadFile(
+                    $file,
+                    'properties/images',
+                    ['transformation' => ['quality' => 'auto','fetch_format' => 'auto']]
+                );
+
+                if ($res['success']) {
+                    $imageModel->update([
+                        'image_url' => $res['url'],
+                        'public_id' => $res['public_id'],
+                        'image_type' => $res['format'],
+                        'original_filename' => $res['original_filename'] ?? null,
+                        'size' => $res['size'] ?? null,
+                        'width' => $res['width'] ?? null,
+                        'height' => $res['height'] ?? null,
+                        // keep order_index/description unless you send new ones
+                    ]);
+                } else {
+                    // optional: throw exception to rollback
+                    throw new \Exception('Cloud upload failed: '.($res['error'] ?? 'unknown'));
+                }
+            }
+        }
+
+        // 5) Add new images (append)
+        if ($request->hasFile('images')) {
+            $orderIndex = $property->images()->count();
+            foreach ($request->file('images') as $file) {
+                $res = $this->cloudinaryService->uploadFile(
+                    $file,
+                    'properties/images',
+                    ['transformation' => ['quality' => 'auto','fetch_format' => 'auto']]
+                );
+
+                if ($res['success']) {
+                    $property->images()->create([
+                        'image_url' => $res['url'],
+                        'public_id' => $res['public_id'],
+                        'image_type' => $res['format'],
+                        'order_index' => $orderIndex++,
+                        'description' => '',
+                        'original_filename' => $res['original_filename'] ?? null,
+                        'size' => $res['size'] ?? null,
+                        'width' => $res['width'] ?? null,
+                        'height' => $res['height'] ?? null,
+                    ]);
+                }
+            }
+        }
+
+        // 6) Do same for documents:
+        // delete_documents[], replace_documents[i][id]+file, documents[] (new)
+        if ($request->filled('delete_documents')) {
+            foreach ($request->delete_documents as $docId) {
+                $doc = $property->documents()->find($docId);
+                if ($doc) {
+                    if (!empty($doc->public_id)) $this->cloudinaryService->deleteFile($doc->public_id);
+                    $doc->delete();
+                }
+            }
+        }
+
+        if ($request->has('replace_documents')) {
+            foreach ($request->replace_documents as $i => $entry) {
+                $docId = $entry['id'] ?? null;
+                if (!$docId) continue;
+                $docModel = $property->documents()->find($docId);
+                if (!$docModel) continue;
+                $file = $request->file("replace_documents.$i.file");
+                if (!$file) continue;
+
+                if (!empty($docModel->public_id)) $this->cloudinaryService->deleteFile($docModel->public_id);
+
+                $res = $this->cloudinaryService->uploadFile($file, 'properties/documents');
+                if ($res['success']) {
+                    $docModel->update([
+                        'document_url' => $res['url'],
+                        'public_id' => $res['public_id'],
+                        'document_type' => $res['format'],
+                        'original_filename' => $res['original_filename'] ?? null,
+                        'size' => $res['size'] ?? null,
+                    ]);
+                } else {
+                    throw new \Exception('Doc upload failed: '.($res['error'] ?? 'unknown'));
+                }
+            }
+        }
+
+        if ($request->hasFile('documents')) {
+            foreach ($request->file('documents') as $file) {
+                $res = $this->cloudinaryService->uploadFile($file, 'properties/documents');
+                if ($res['success']) {
+                    $property->documents()->create([
+                        'document_url' => $res['url'],
+                        'public_id' => $res['public_id'],
+                        'document_type' => $res['format'],
+                        'original_filename' => $res['original_filename'] ?? null,
+                        'size' => $res['size'] ?? null,
+                    ]);
+                }
+            }
+        }
+
+        DB::commit();
+
+        return response()->json([
+            'message' => 'Property updated successfully',
+            'data' => $property->load(['features','images','documents']),
+            'success' => true
+        ], 200);
+
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        return response()->json([
+            'message' => 'Update failed: '.$e->getMessage(),
+            'success' => false
+        ], 500);
+    }
+}
+
+
+
+    /**
+     * Remove the specified resource from storage.
+     */
+    // public function destroy(string $id)
+    // {
+    //     $property = Property::find($id);
+    //     if (!$property) {
+    //         return response()->json(['message' => 'Property not found'], 404);
+    //     }
+    //     $property->delete();
+    //     return response()->json(['message' => 'Property deleted successfully'], 200);
+    // }
+    public function destroy(Property $property): JsonResponse
+{
+    // Delete images from Cloudinary + DB
+    foreach ($property->images as $image) {
+        if ($image->public_id) {
+            $this->cloudinaryService->deleteFile($image->public_id);
+        }
+        $image->delete();
+    }
+
+    // Delete documents from Cloudinary + DB
+    foreach ($property->documents as $document) {
+        if ($document->public_id) {
+            $this->cloudinaryService->deleteFile($document->public_id);
+        }
+        $document->delete();
+    }
+
+    // Detach features (pivot table)
+    $property->features()->detach();
+
+    // Delete property itself
+    $property->delete();
+
+    return response()->json([
+        'message' => 'Property deleted successfully',
+        'success' => true
+    ], 200);
+}
+
+}
