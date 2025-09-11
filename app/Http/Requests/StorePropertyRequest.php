@@ -22,7 +22,7 @@ class StorePropertyRequest extends FormRequest
     public function rules(): array
     {
          return [
-            'user_id'      => 'required|exists:users,id',
+            // 'user_id'      => 'required|exists:users,id',
             'title'         => 'required|string|max:200',
             'description'   => 'nullable|string',
             'type'          => 'required|in:Apartment,Villa,Duplex,Roof,Land',

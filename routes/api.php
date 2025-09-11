@@ -10,7 +10,6 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
-Route::apiResource('properties', PropertyController::class);
 
 
 // Public routes
@@ -23,4 +22,8 @@ Route::post('/refresh', [AuthenticationController::class, 'refresh']);
 Route::middleware('auth:api')->group(function () {
     Route::post('profile', [AuthenticationController::class, 'profile']);
     Route::post('/logout', [AuthenticationController::class, 'logout']);
+
+    //properties
+    Route::apiResource('properties', PropertyController::class);
+
 });
