@@ -4,7 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PropertyController;
 use App\Http\Controllers\Api\AuthenticationController;
-
+use App\Http\Controllers\Api\ImageOfId;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -25,6 +25,7 @@ Route::post('/resend-email-otp', [AuthenticationController::class, 'resendEmailO
 Route::post('/send-phone-otp', [AuthenticationController::class, 'sendPhoneOtp']);
 Route::post('/verify-phone-otp', [AuthenticationController::class, 'verifyPhoneOtp']);
 
+Route::post('/upload-id', [ImageOfId::class, 'uploadIdImage']);
 // Protected routes
 Route::middleware('auth:api')->group(function () {
     Route::post('profile', [AuthenticationController::class, 'profile']);
