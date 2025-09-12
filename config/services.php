@@ -41,5 +41,10 @@ return [
         'api_secret' => env('CLOUDINARY_API_SECRET'),
         'secure' => true,
     ],
+     'whatsapp' => [
+        'access_token' => env('WHATSAPP_ACCESS_TOKEN'),
+        'phone_id' => env('WHATSAPP_PHONE_ID'),
+        'template_name' => env('WHATSAPP_TEMPLATE_NAME'),
+    ]
 
 ];

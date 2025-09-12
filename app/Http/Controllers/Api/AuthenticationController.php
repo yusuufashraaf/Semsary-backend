@@ -7,14 +7,20 @@ use App\Http\Resources\UserResource;
 use App\Jobs\sendOTPJOB;
 use App\Models\RefreshToken;
 use App\Models\User;
+use App\Services\PhoneVerificationService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
 class AuthenticationController extends Controller
 {
+    public function __construct(public PhoneVerificationService $phone_verification_service)
+    {
+
+    }
     // Register new user
     public function register(Request $request)
     {
@@ -113,6 +119,107 @@ class AuthenticationController extends Controller
 
             return response()->json(['message' => 'A new verification code has been sent to your email.']);
         }
+    public function sendPhoneOtp(Request $request)
+        {
+
+            $validator = Validator::make($request->all(), [
+                'user_id' => 'required|integer|exists:users,id',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(['errors' => $validator->errors()], 422);
+            }
+
+            $user = User::find($request->user_id);
+
+            if ($user->phone_verified_at) {
+                return response()->json(['message' => 'Phone number is already verified.'], 400);
+            }
+
+
+            $otp = rand(100000, 999999);
+            $expires_at = now()->addMinutes(10);
+
+
+            $user->update([
+                'whatsapp_otp' => $otp,
+                'whatsapp_otp_expires_at' => $expires_at,
+            ]);
+
+               try {
+                    $response = $this->phone_verification_service->sendOtpMessage($user->phone_number, $otp);
+
+
+                    if ($response->failed()) {
+
+                        Log::error('WhatsApp service failed to send OTP.', [
+                            'user_id' => $user->id,
+                            'status' => $response->status(),
+                            'response_body' => $response->body(),
+                        ]);
+
+                        $user->update([
+                            'whatsapp_otp' => null,
+                            'whatsapp_otp_expires_at' => null,
+                        ]);
+
+                        return response()->json(['message' => 'We were unable to send a verification code to your phone. Please check the number and try again.'], 502); // 502 Bad Gateway is appropriate here
+                    }
+
+
+                } catch (\Throwable $e) {
+                    $user->update([
+                        'whatsapp_otp' => null,
+                        'whatsapp_otp_expires_at' => null,
+                    ]);
+
+                    Log::error('WhatsApp OTP sending service threw an exception: ' . $e->getMessage());
+                    return response()->json(['message' => 'Failed to send verification code due to a server error. Please try again later.'], 500);
+                }
+
+                return response()->json(['message' => 'A verification code has been sent to your phone.']);
+            }
+
+
+
+    /**
+     * Verify the phone number using the submitted OTP.
+     */
+    public function verifyPhoneOtp(Request $request)
+    {
+        // 1. Validate the incoming request.
+        $validator = Validator::make($request->all(), [
+            'user_id' => 'required|integer|exists:users,id',
+            'otp'     => 'required|string|min:6|max:6',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $user = User::find($request->user_id);
+
+        // Security check: Ensure the phone is not already verified.
+        if ($user->phone_verified_at) {
+            return response()->json(['message' => 'Phone number is already verified.'], 400);
+        }
+
+        // 2. Perform the security checks.
+        // Check 1: Does the submitted OTP match the one in the database?
+        // Check 2: Is the current time before the expiration time?
+        if ($user->whatsapp_otp !== $request->otp || now()->isAfter($user->whatsapp_otp_expires_at)) {
+            return response()->json(['message' => 'Invalid or expired verification code.'], 422);
+        }
+
+        // 3. If checks pass, update the user record.
+        $user->update([
+            'phone_verified_at' => now(), // Mark the phone as verified.
+            'whatsapp_otp' => null,          // CRUCIAL: Nullify the OTP so it cannot be used again.
+            'whatsapp_otp_expires_at' => null,
+        ]);
+
+        return response()->json(['message' => 'Phone number verified successfully.']);
+    }
 
 
     // Login user and return JWT token

@@ -21,12 +21,16 @@ Route::post('/refresh', [AuthenticationController::class, 'refresh']);
 
 Route::post('/verify-email', [AuthenticationController::class, 'verifyEmailOtp']);
 Route::post('/resend-email-otp', [AuthenticationController::class, 'resendEmailOtp']);
+
+Route::post('/send-phone-otp', [AuthenticationController::class, 'sendPhoneOtp']);
+Route::post('/verify-phone-otp', [AuthenticationController::class, 'verifyPhoneOtp']);
+
 // Protected routes
 Route::middleware('auth:api')->group(function () {
     Route::post('profile', [AuthenticationController::class, 'profile']);
     Route::post('/logout', [AuthenticationController::class, 'logout']);
 
-    
+
 
 });
 
