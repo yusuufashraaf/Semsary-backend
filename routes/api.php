@@ -1,4 +1,5 @@
 <?php
+use App\Http\Controllers\OwnerDashboardController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PropertyController;
@@ -23,7 +24,14 @@ Route::middleware('auth:api')->group(function () {
     Route::post('profile', [AuthenticationController::class, 'profile']);
     Route::post('/logout', [AuthenticationController::class, 'logout']);
 
-    //properties
-    Route::apiResource('properties', PropertyController::class);
+    
 
 });
+
+Route::middleware(['auth:api', 'role:owner'])->group(function () {
+    //properties
+    Route::apiResource('properties', PropertyController::class);
+    //owner dashboard
+    Route::get('/owner/dashboard', [OwnerDashboardController::class, 'index']);
+});
+

@@ -30,8 +30,6 @@ class PropertyController extends Controller
             if($properties->isEmpty()){
                 return response()->json(['message' => 'No properties found for this owner'], 404);
             }
-        }else{
-            return response()->json(['message' => 'Forbidden'], 403);
         }
         
         return response()->json([
@@ -93,10 +91,6 @@ class PropertyController extends Controller
 
      public function store(StorePropertyRequest $request): JsonResponse
      {
-        $user = auth('api')->user();
-        if ($user->role !== 'owner') {
-            return response()->json(['message' => 'Forbidden'], 403);
-        }
         $data = $request->validated();
         $data['owner_id'] = auth('api')->id();
         
@@ -184,10 +178,6 @@ class PropertyController extends Controller
      */
     public function show(string $id)
     {
-        $user = auth('api')->user();
-        if ($user->role !== 'owner') {
-            return response()->json(['message' => 'Forbidden'], 403);
-        }
         $property = Property::where('id', $id)
                         ->where('owner_id', auth()->id()) 
                         ->with(['images','documents','features'])
@@ -217,9 +207,6 @@ public function update(UpdatePropertyRequest $request, Property $property): Json
     $data = $request->validated();
     
     $user = auth('api')->user();
-    if ($user->role !== 'owner') {
-            return response()->json(['message' => 'Forbidden'], 403);
-        }
 
     if($user->role === 'owner' && $property->owner_id !== $user->id){
         return response()->json([
@@ -229,15 +216,15 @@ public function update(UpdatePropertyRequest $request, Property $property): Json
 
     DB::beginTransaction();
     try {
-        // 1) Update main fields (ignore files & relations from this array)
+        // Update main fields
         $property->update($data);
 
-        // 2) Sync features if provided
+        // Sync features if provided
         if ($request->has('features')) {
             $property->features()->sync($request->features);
         }
 
-        // 3) Delete specific images if requested
+        //Delete specific images if requested
         if ($request->filled('delete_images')) {
             foreach ($request->delete_images as $imgId) {
                 $img = $property->images()->find($imgId);
@@ -250,7 +237,7 @@ public function update(UpdatePropertyRequest $request, Property $property): Json
             }
         }
 
-        // 4) Replace specific images: expect replace_images[i][id] and replace_images[i][file]
+        // Replace specific images: expect replace_images[i][id] and replace_images[i][file]
         if ($request->has('replace_images')) {
             foreach ($request->replace_images as $i => $entry) {
                 $imgId = $entry['id'] ?? null;
@@ -284,16 +271,15 @@ public function update(UpdatePropertyRequest $request, Property $property): Json
                         'size' => $res['size'] ?? null,
                         'width' => $res['width'] ?? null,
                         'height' => $res['height'] ?? null,
-                        // keep order_index/description unless you send new ones
                     ]);
                 } else {
-                    // optional: throw exception to rollback
+                    //throw exception to rollback
                     throw new \Exception('Cloud upload failed: '.($res['error'] ?? 'unknown'));
                 }
             }
         }
 
-        // 5) Add new images (append)
+        //Add new images (append)
         if ($request->hasFile('images')) {
             $orderIndex = $property->images()->count();
             foreach ($request->file('images') as $file) {
@@ -319,7 +305,7 @@ public function update(UpdatePropertyRequest $request, Property $property): Json
             }
         }
 
-        // 6) Do same for documents:
+        //documents:
         // delete_documents[], replace_documents[i][id]+file, documents[] (new)
         if ($request->filled('delete_documents')) {
             foreach ($request->delete_documents as $docId) {
@@ -406,9 +392,6 @@ public function update(UpdatePropertyRequest $request, Property $property): Json
     public function destroy(Property $property): JsonResponse
 {
     $user = auth('api')->user();
-    if ($user->role !== 'owner') {
-            return response()->json(['message' => 'Forbidden'], 403);
-        }
     if($user->role === 'owner' && $property->owner_id !== $user->id){
         return response()->json([
             'message' => 'You are not allowed to delete this property'
