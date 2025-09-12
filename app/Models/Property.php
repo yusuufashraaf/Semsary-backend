@@ -35,7 +35,15 @@ class Property extends Model
     {
         return $this->hasMany(PropertyDocument::class);
     }
-    function user()
+
+    public function bookings(){
+        return $this->hasMany(Booking::class);
+    }
+
+    public function reviews(){
+        return $this->hasMany(Review::class);
+    }
+    public function user()//owner
     {
        return $this->belongsTo(User::class);
     }
