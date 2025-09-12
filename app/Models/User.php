@@ -25,7 +25,8 @@ class User extends Authenticatable implements JWTSubject
         'whatsapp_otp',
         'whatsapp_otp_expires_at',
         'email_verified_at',
-        'phone_verified_at'
+        'phone_verified_at',
+
     ];
 
     protected $hidden = [
