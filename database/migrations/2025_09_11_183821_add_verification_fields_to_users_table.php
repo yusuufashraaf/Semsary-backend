@@ -15,14 +15,8 @@ return new class extends Migration
 
 
 
-            // --- Phone/WhatsApp Verification Fields ---
-
-            // A timestamp to mark when the phone number was verified.
-            // The 6-digit OTP code for WhatsApp/SMS.
-            // The expiration timestamp for the WhatsApp OTP.
-
             $table->string('whatsapp_otp')->nullable()->after('phone_verified_at');
-
+            $table->string('id_image_url')->nullable()->after('password');
             $table->timestamp('whatsapp_otp_expires_at')->nullable()->after('whatsapp_otp');
         });
     }
@@ -37,6 +31,7 @@ return new class extends Migration
             $table->dropColumn([
             'whatsapp_otp',
             'whatsapp_otp_expires_at',
+            'id_image_url'
             ]);
         });
     }
