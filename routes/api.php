@@ -5,6 +5,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PropertyController;
 use App\Http\Controllers\Api\AuthenticationController;
 use App\Http\Controllers\Api\ImageOfId;
+use App\Http\Controllers\Api\forgetPasswordController;
+use App\Http\Controllers\Api\resetPassVerification;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -26,6 +28,12 @@ Route::post('/send-phone-otp', [AuthenticationController::class, 'sendPhoneOtp']
 Route::post('/verify-phone-otp', [AuthenticationController::class, 'verifyPhoneOtp']);
 
 Route::post('/upload-id', [ImageOfId::class, 'uploadIdImage']);
+
+
+Route::post('/forgot-password', [forgetPasswordController::class,'forgetPassword']);
+Route::post('/reset-password', [resetPassVerification::class,'resetPassword']);
+
+
 // Protected routes
 Route::middleware('auth:api')->group(function () {
     Route::post('profile', [AuthenticationController::class, 'profile']);

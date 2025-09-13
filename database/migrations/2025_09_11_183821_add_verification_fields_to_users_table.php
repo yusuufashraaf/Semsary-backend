@@ -13,11 +13,13 @@ return new class extends Migration
     {
         Schema::table('users', function (Blueprint $table) {
 
+        $table->string('email_otp')->nullable()->after('email_verified_at');
+        $table->timestamp('email_otp_expires_at')->nullable()->after('email_otp');
 
+        $table->string('whatsapp_otp')->nullable()->after('phone_verified_at');
+        $table->timestamp('whatsapp_otp_expires_at')->nullable()->after('whatsapp_otp');
 
-            $table->string('whatsapp_otp')->nullable()->after('phone_verified_at');
-            $table->string('id_image_url')->nullable()->after('password');
-            $table->timestamp('whatsapp_otp_expires_at')->nullable()->after('whatsapp_otp');
+        $table->string('id_image_url')->nullable()->after('password');
         });
     }
 
