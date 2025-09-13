@@ -29,14 +29,14 @@ class PhoneVerificationService
     {
         $url = "https://graph.facebook.com/{$this->apiVersion}/{$this->phoneId}/messages";
 
-        $payload = [
+               $payload = [
             "messaging_product" => "whatsapp",
             "to"                => $recipientPhone,
             "type"              => "template",
             "template"          => [
                 "name"     => $this->templateName,
                 "language" => [
-                    "code" => "en_US"
+                    "code" => "en"
                 ],
                 "components" => [
                     [
@@ -47,16 +47,27 @@ class PhoneVerificationService
                                 "text" => $otp
                             ]
                         ]
+                    ],
+
+                    [
+                        "type" => "button",
+                        "sub_type" => "url", // Specify that it's a URL button
+                        "index" => "0", // The index of the button in your template (usually "0" if there's only one)
+                        "parameters" => [
+                            [
+                                "type" => "text",
+
+                                "text" => $otp
+                            ]
+                        ]
                     ]
                 ]
             ]
         ];
 
-        $response = Http::withHeaders([
+        return Http::withHeaders([
             'Authorization' => "Bearer {$this->accessToken}",
             'Content-Type'  => 'application/json',
         ])->post($url, $payload);
-        return $response;
-
     }
 }
