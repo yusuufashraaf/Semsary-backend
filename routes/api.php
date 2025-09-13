@@ -32,7 +32,7 @@ Route::post('/upload-id', [ImageOfId::class, 'uploadIdImage']);
 
 Route::post('/forgot-password', [forgetPasswordController::class,'forgetPassword']);
 Route::post('/reset-password', [resetPassVerification::class,'resetPassword']);
-
+Route::post('/verify-reset-token', [resetPassVerification::class, 'verifyToken']);
 
 // Protected routes
 Route::middleware('auth:api')->group(function () {

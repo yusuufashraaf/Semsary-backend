@@ -16,6 +16,7 @@ class resetPassVerification extends Controller
     public function resetPassword(Request $request)
     {
 
+
     $validator = Validator::make($request->all(), [
         'email'    => 'required|email|exists:users,email',
         'token'    => 'required|string',
@@ -38,6 +39,7 @@ class resetPassVerification extends Controller
     }
 
     $user = User::where('email', $request->email)->first();
+
     $user->update([
         'password' => Hash::make($request->password)
     ]);
@@ -47,5 +49,29 @@ class resetPassVerification extends Controller
 
     return response()->json(['message' => 'Your password has been reset successfully.']);
 
+    }
+    public function verifyToken(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email',
+            'token' => 'required|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['message' => 'Invalid data provided.'], 422);
+        }
+
+        $tokenRecord = DB::table('password_reset_tokens')
+            ->where('email', $request->email)
+            ->where('token', $request->token)
+            ->first();
+
+        $expirationTime = config('auth.passwords.users.expire', 60);
+
+        if (!$tokenRecord || now()->subMinutes($expirationTime)->isAfter($tokenRecord->created_at)) {
+            return response()->json(['message' => 'Invalid or expired password reset token.'], 422);
+        }
+
+        return response()->json(['message' => 'Token is valid.'], 200);
     }
 }
