@@ -22,7 +22,7 @@ class StorePropertyRequest extends FormRequest
     public function rules(): array
     {
          return [
-            // 'user_id'      => 'required|exists:users,id',
+            'user_id'      => 'required|exists:users,id',
             'title'         => 'required|string|max:200',
             'description'   => 'nullable|string',
             'type'          => 'required|in:Apartment,Villa,Duplex,Roof,Land',
@@ -30,10 +30,10 @@ class StorePropertyRequest extends FormRequest
             'price_type'    => 'required|in:FullPay,Monthly,Daily',
             'location'      => 'required|array',
             'location.address' => 'required|string|max:255',
-            'location.lat'  => 'required|numeric|between:-90,90',
-            'location.lng'  => 'required|numeric|between:-180,180',
+            'location.lat'  => 'numeric|between:-90,90',
+            'location.lng'  => 'numeric|between:-180,180',
             'size'          => 'required|integer|min:1',
-            'property_state'=> 'required|in:Valid,Invalid,Pending,Rented,Sold',
+            'property_state'=> 'in:Valid,Invalid,Pending,Rented,Sold',
             // Images
             'images' => 'nullable|array',
             'images.*' => 'file|mimes:jpg,jpeg,png,webp|max:2048',
