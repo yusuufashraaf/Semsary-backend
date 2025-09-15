@@ -25,6 +25,8 @@ class StorePropertyRequest extends FormRequest
             'user_id'      => 'required|exists:users,id',
             'title'         => 'required|string|max:200',
             'description'   => 'nullable|string',
+            'bedrooms'    => 'required|integer|min:1',
+            'bathrooms'   => 'required|integer|min:1',
             'type'          => 'required|in:Apartment,Villa,Duplex,Roof,Land',
             'price'         => 'required|numeric|min:0',
             'price_type'    => 'required|in:FullPay,Monthly,Daily',

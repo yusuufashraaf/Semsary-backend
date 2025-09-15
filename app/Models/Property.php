@@ -10,6 +10,8 @@ class Property extends Model
         'owner_id',
         'title',
         'description',
+        'bedrooms',
+        'bathrooms',
         'type',
         'price',
         'price_type',
