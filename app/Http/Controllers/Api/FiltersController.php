@@ -29,7 +29,7 @@ class FiltersController extends Controller
 
             // Unique bedroom counts (stored in location JSON)
             $bedroomsOptions = PropertyList::query()
-                ->selectRaw('DISTINCT JSON_UNQUOTE(JSON_EXTRACT(location, "$.bedrooms")) as bedrooms')
+                ->distinct()
                 ->pluck('bedrooms')
                 ->filter()
                 ->unique()

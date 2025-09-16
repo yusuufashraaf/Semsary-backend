@@ -30,7 +30,6 @@ class PropertyListController extends Controller
             $query->where('location->city', $request->location);
         }
 
-        // Accept both "propertyType" and "type"
         if ($request->filled('propertyType') || $request->filled('type')) {
             $type = $request->get('propertyType', $request->get('type'));
             $query->whereRaw('LOWER(type) = ?', [strtolower($type)]);
@@ -38,6 +37,12 @@ class PropertyListController extends Controller
 
         if ($request->filled('status')) {
             $query->where('property_state', $request->status);
+        }
+
+        if ($request->filled('beds')) {
+            $beds = explode(',', $request->beds);
+            $beds = array_map('intval', $beds);
+            $query->whereIn('bedrooms', $beds);
         }
 
         if ($request->filled('priceMin')) {
@@ -48,7 +53,7 @@ class PropertyListController extends Controller
             $query->where('price', '<=', $request->priceMax);
         }
 
-        //  Sorting
+        // Sorting
         if ($request->filled('sortBy')) {
             $sortField = $request->sortBy;
             $sortOrder = $request->get('sortOrder', 'asc');
@@ -69,8 +74,8 @@ class PropertyListController extends Controller
                 'id' => (string) $property->id,
                 'image' => $property->images->first()->image_url ?? null,
                 'title' => $property->title,
-                'bedrooms' => $property->location['bedrooms'] ?? null,
-                'bathrooms' => $property->location['bathrooms'] ?? null,
+                'bedrooms' => $property->bedrooms ?? null,
+                'bathrooms' => $property->bathrooms ?? null,
                 'sqft' => $property->size,
                 'price' => (float) $property->price,
                 'status' => strtolower($property->property_state),
@@ -81,25 +86,5 @@ class PropertyListController extends Controller
         $properties->setCollection($listings);
 
         return response()->json($properties);
-    }
-
-
-    /**
-     * Get filter options for dropdowns
-     */
-    public function filterOptions()
-    {
-        return response()->json([
-            'locations' => PropertyList::selectRaw('DISTINCT JSON_UNQUOTE(JSON_EXTRACT(location, "$.city")) as city')
-                ->pluck('city')
-                ->filter()
-                ->values(),
-
-            'propertyTypes' => PropertyList::select('type')->distinct()->pluck('type'),
-
-            'statuses' => PropertyList::select('property_state')->distinct()->pluck('property_state'),
-
-            'amenitiesOptions' => \App\Models\Feature::pluck('name'),
-        ]);
     }
 }
