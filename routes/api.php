@@ -1,6 +1,9 @@
 <?php
+use App\Http\Controllers\Api\FiltersController;
+use App\Http\Controllers\Api\PropertyListController;
 use App\Http\Controllers\FeatureController;
 use App\Http\Controllers\OwnerDashboardController;
+use App\Http\Controllers\PropertyDetailsController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PropertyController;
@@ -31,8 +34,8 @@ Route::post('/verify-phone-otp', [AuthenticationController::class, 'verifyPhoneO
 Route::post('/upload-id', [ImageOfId::class, 'uploadIdImage']);
 
 
-Route::post('/forgot-password', [forgetPasswordController::class,'forgetPassword']);
-Route::post('/reset-password', [resetPassVerification::class,'resetPassword']);
+Route::post('/forgot-password', [forgetPasswordController::class, 'forgetPassword']);
+Route::post('/reset-password', [resetPassVerification::class, 'resetPassword']);
 Route::post('/verify-reset-token', [resetPassVerification::class, 'verifyToken']);
 
 // Protected routes
@@ -53,3 +56,9 @@ Route::middleware(['auth:api', 'role:owner'])->group(function () {
     Route::get('/owner/dashboard', [OwnerDashboardController::class, 'index']);
 });
 
+Route::prefix('propertiesList')->group(function () {
+    Route::get('/', [PropertyListController::class, 'index']);
+    Route::get('/filters', [PropertyListController::class, 'filterOptions']);
+    Route::get('/filtersOptions', [FiltersController::class, 'index']);
+    Route::get('/{id}', [PropertyController::class, 'showAnyone']);
+});
