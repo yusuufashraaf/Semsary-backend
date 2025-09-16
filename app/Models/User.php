@@ -72,4 +72,67 @@ class User extends Authenticatable implements JWTSubject
     {
         return $this->hasMany(Booking::class);
     }
+
+//////////////////////////////////////////
+//////////////////////////////////////////
+// Admin dashboard
+
+// New relationships for admin dashboard
+public function transactions()
+{
+    return $this->hasMany(Transaction::class);
+}
+
+public function auditLogs()
+{
+    return $this->hasMany(AuditLog::class);
+}
+
+// Admin scopes
+public function scopeAdmins($query)
+{
+    return $query->where('role', 'admin');
+}
+
+public function scopeOwners($query)
+{
+    return $query->where('role', 'owner');
+}
+
+public function scopeAgents($query)
+{
+    return $query->where('role', 'agent');
+}
+
+public function scopeActive($query)
+{
+    return $query->where('status', 'active');
+}
+
+// Admin helper methods
+public function isAdmin(): bool
+{
+    return $this->role === 'admin';
+}
+
+public function isOwner(): bool
+{
+    return $this->role === 'owner';
+}
+
+public function isAgent(): bool
+{
+    return $this->role === 'agent';
+}
+
+// Statistics methods for dashboard
+public function getTotalTransactionsAttribute(): int
+{
+    return $this->transactions()->count();
+}
+
+public function getTotalSpentAttribute(): float
+{
+    return $this->transactions()->where('status', 'success')->sum('amount');
+}
 }
