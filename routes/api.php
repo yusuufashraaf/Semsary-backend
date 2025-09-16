@@ -11,6 +11,7 @@ use App\Http\Controllers\PropertyController;
 use App\Http\Controllers\Api\AuthenticationController;
 use App\Http\Controllers\Api\ImageOfId;
 use App\Http\Controllers\Api\forgetPasswordController;
+use App\Http\Controllers\Api\GoogleAuthController;
 use App\Http\Controllers\Api\resetPassVerification;
 
 Route::get('/user', function (Request $request) {
@@ -38,6 +39,13 @@ Route::post('/upload-id', [ImageOfId::class, 'uploadIdImage']);
 Route::post('/forgot-password', [forgetPasswordController::class, 'forgetPassword']);
 Route::post('/reset-password', [resetPassVerification::class, 'resetPassword']);
 Route::post('/verify-reset-token', [resetPassVerification::class, 'verifyToken']);
+
+
+ Route::post('auth/google/exchange', [GoogleAuthController::class, 'exchangeToken']);
+
+Route::get('auth/google/redirect', [GoogleAuthController::class, 'redirectToGoogle']);
+Route::get('auth/google/callback', [GoogleAuthController::class, 'handleGoogleCallback']);
+
 
 // Protected routes
 Route::middleware('auth:api')->group(function () {

@@ -45,6 +45,12 @@ return [
         'access_token' => env('WHATSAPP_ACCESS_TOKEN'),
         'phone_id' => env('WHATSAPP_PHONE_ID'),
         'template_name' => env('WHATSAPP_TEMPLATE_NAME'),
-    ]
+     ],
+
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect' => env("GOOGLE_CALLBACK_URL"),
+    ],
 
 ];
