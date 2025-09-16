@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\AuthenticationController;
 use App\Http\Controllers\Api\ImageOfId;
 use App\Http\Controllers\Api\forgetPasswordController;
 use App\Http\Controllers\Api\resetPassVerification;
+use App\Http\Controllers\Admin\DashboardController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -53,3 +54,12 @@ Route::middleware(['auth:api', 'role:owner'])->group(function () {
     Route::get('/owner/dashboard', [OwnerDashboardController::class, 'index']);
 });
 
+
+// Admin routes
+Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
+    // Admin Dashboard Statistics - SEM-60: Admin Dashboard API Implementation
+    Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
+    Route::get('/dashboard/charts/revenue', [DashboardController::class, 'getRevenueChart']);
+    Route::get('/dashboard/charts/users', [DashboardController::class, 'getUsersChart']);
+    Route::get('/dashboard/charts/properties', [DashboardController::class, 'getPropertiesChart']);
+});
