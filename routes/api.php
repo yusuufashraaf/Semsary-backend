@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\AuthenticationController;
 use App\Http\Controllers\Api\ImageOfId;
 use App\Http\Controllers\Api\forgetPasswordController;
 use App\Http\Controllers\Api\resetPassVerification;
+use App\Http\Controllers\Api\UserController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -41,9 +42,6 @@ Route::post('/verify-reset-token', [resetPassVerification::class, 'verifyToken']
 Route::middleware('auth:api')->group(function () {
     Route::post('profile', [AuthenticationController::class, 'profile']);
     Route::post('/logout', [AuthenticationController::class, 'logout']);
-
-
-
 });
 
 Route::get('/features', [FeatureController::class, 'index']);
@@ -60,4 +58,13 @@ Route::prefix('propertiesList')->group(function () {
     Route::get('/filters', [PropertyListController::class, 'filterOptions']);
     Route::get('/filtersOptions', [FiltersController::class, 'index']);
     Route::get('/{id}', [PropertyListController::class, 'show']);
+});
+
+Route::prefix('user/{id}')->group(function ($id) {
+    Route::get('/', [UserController::class, 'index']);
+    Route::get('/reviews', [UserController::class, 'reviews']);
+    Route::get('/properties', [UserController::class, 'properties']);
+    Route::get('/notifications', [UserController::class, 'notifications']);
+    Route::get('/purchases', [UserController::class, 'purchases']);
+    Route::get('/bookings', [UserController::class, 'bookings']);
 });
