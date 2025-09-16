@@ -26,6 +26,7 @@ class PropertyController extends Controller
     {
         $user = auth('api')->user();
         if($user->role === 'owner'){
+            // $properties = Property::with(['images', 'documents', 'features'])->get();
             $properties = Property::with(['images', 'documents', 'features'])->where('owner_id', $user->id)->get();
             if($properties->isEmpty()){
                 return response()->json(['message' => 'No properties found for this owner'], 404);

@@ -1,6 +1,7 @@
 <?php
 use App\Http\Controllers\Api\FiltersController;
 use App\Http\Controllers\Api\PropertyListController;
+use App\Http\Controllers\FeatureController;
 use App\Http\Controllers\OwnerDashboardController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -45,9 +46,11 @@ Route::middleware('auth:api')->group(function () {
 
 });
 
+Route::get('/features', [FeatureController::class, 'index']);
+
 Route::middleware(['auth:api', 'role:owner'])->group(function () {
     //properties
-    Route::apiResource('properties', PropertyController::class);
+    Route::apiResource('/properties', PropertyController::class);
     //owner dashboard
     Route::get('/owner/dashboard', [OwnerDashboardController::class, 'index']);
 });
