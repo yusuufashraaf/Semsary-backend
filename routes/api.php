@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\PropertyListController;
 use App\Http\Controllers\FeatureController;
 use App\Http\Controllers\OwnerDashboardController;
 use App\Http\Controllers\PropertyDetailsController;
+use App\Http\Controllers\ReviewController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PropertyController;
@@ -62,3 +63,5 @@ Route::prefix('propertiesList')->group(function () {
     Route::get('/filtersOptions', [FiltersController::class, 'index']);
     Route::get('/{id}', [PropertyController::class, 'showAnyone']);
 });
+
+Route::get('/properties/{id}/reviews', [ReviewController::class, 'index']);
