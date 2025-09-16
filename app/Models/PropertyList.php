@@ -20,10 +20,14 @@ class PropertyList extends Model
         'location',
         'size',
         'property_state',
+        'bedrooms',
+        'bathrooms',
     ];
 
     protected $casts = [
         'location' => 'array',
+        'bedrooms' => 'integer',
+        'bathrooms' => 'integer',
     ];
 
     // Relations
@@ -36,5 +40,4 @@ class PropertyList extends Model
     {
         return $this->hasMany(PropertyImage::class, 'property_id');
     }
-
 }
