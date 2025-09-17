@@ -28,6 +28,7 @@ class DatabaseSeeder extends Seeder
             propertyImageSeeder::class,
             purchaseSeeder::class,
             AdminUserManagementSeeder::class,
+            CSAgentPropertyAssignSeeder::class,
             // Add other seeders as needed
         // ... other seeders like ReviewSeeder
     ]);
