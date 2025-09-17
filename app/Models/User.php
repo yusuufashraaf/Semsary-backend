@@ -48,9 +48,10 @@ class User extends Authenticatable implements JWTSubject
     {
         return [];
     }
+
     public function properties()
     {
-        return $this->hasMany(Property::class);
+        return $this->hasMany(Property::class, 'owner_id');
     }
 
     public function reviews()
@@ -109,6 +110,27 @@ public function scopeActive($query)
     return $query->where('status', 'active');
 }
 
+public function scopePending($query)
+{
+    return $query->where('status', 'pending');
+}
+
+public function scopeSuspended($query)
+{
+    return $query->where('status', 'suspended');
+}
+
+// NEW: Admin actions relationships
+public function adminActions()
+{
+    return $this->hasMany(AdminAction::class, 'user_id');
+}
+
+public function performedAdminActions()
+{
+    return $this->hasMany(AdminAction::class, 'admin_id');
+}
+
 // Admin helper methods
 public function isAdmin(): bool
 {
@@ -123,6 +145,76 @@ public function isOwner(): bool
 public function isAgent(): bool
 {
     return $this->role === 'agent';
+}
+
+public function isActive(): bool
+{
+    return $this->status === 'active';
+}
+
+public function isPending(): bool
+{
+    return $this->status === 'pending';
+}
+
+public function isSuspended(): bool
+{
+    return $this->status === 'suspended';
+}
+
+// NEW: Simple status change methods with admin action logging
+public function activateUser(int $adminId, ?string $reason = null): bool
+{
+    if ($this->status !== 'active') {
+        $this->update(['status' => 'active']);
+        AdminAction::log($adminId, $this->id, 'activate', $reason);
+        return true;
+    }
+    return false;
+}
+
+public function suspendUser(int $adminId, ?string $reason = null): bool
+{
+    if ($this->status !== 'suspended') {
+        $this->update(['status' => 'suspended']);
+        AdminAction::log($adminId, $this->id, 'suspend', $reason);
+        return true;
+    }
+    return false;
+}
+
+public function blockUser(int $adminId, ?string $reason = null): bool
+{
+    if ($this->status !== 'pending') {
+        $this->update(['status' => 'pending']);
+        AdminAction::log($adminId, $this->id, 'pending', $reason);
+        return true;
+    }
+    return false;
+}
+
+// Scope for filtering users with search and filters
+public function scopeWithFilters($query, array $filters)
+{
+    return $query->when($filters['role'] ?? null, function ($q, $role) {
+            return $q->where('role', $role);
+        })
+        ->when($filters['status'] ?? null, function ($q, $status) {
+            return $q->where('status', $status);
+        })
+        ->when($filters['search'] ?? null, function ($q, $search) {
+            return $q->where(function ($query) use ($search) {
+                $query->where('first_name', 'like', "%{$search}%")
+                      ->orWhere('last_name', 'like', "%{$search}%")
+                      ->orWhere('email', 'like', "%{$search}%")
+                      ->orWhere('phone_number', 'like', "%{$search}%");
+            });
+        });
+}
+
+public function getFullNameAttribute(): string
+{
+    return "{$this->first_name} {$this->last_name}";
 }
 
 // Statistics methods for dashboard
