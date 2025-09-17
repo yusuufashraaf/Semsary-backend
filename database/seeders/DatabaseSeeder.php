@@ -16,12 +16,18 @@ class DatabaseSeeder extends Seeder
         // User::factory(10)->create();
 
         $this->call([
-        UserSeeder::class,    // Run first to create owners
-        PropertySeeder::class, // Then properties
-        ReviewSeeder::class,   // Then reviews
-        NotificationSeeder::class, // Notifications
-        BookingSeeder::class,  // Finally bookings
-        PurchaseSeeder::class,
+            UserSeeder::class,
+            propertySeeder::class,
+            featureSeeder::class,
+            BookingSeeder::class,
+            ReviewSeeder::class,
+            BathroomSeeder::class,
+            BedroomsSeeder::class,
+            notificationSeeder::class,
+            propertyFeatureSeeder::class,
+            propertyImageSeeder::class,
+            purchaseSeeder::class,
+            // Add other seeders as needed
         // ... other seeders like ReviewSeeder
     ]);
         // User::factory()->create([
