@@ -45,12 +45,16 @@ class PropertySeeder extends Seeder
             $priceType = $faker->randomElement($priceTypes);
             $propertyState = $faker->randomElement($propertyStates);
             $location = $faker->randomElement($locations);
-            
+
             // Generate appropriate price based on type and price type
             $price = $this->generatePrice($propertyType, $priceType, $faker);
-            
+
             // Generate appropriate size based on property type
             $size = $this->generateSize($propertyType, $faker);
+
+            // Generate bedrooms and bathrooms with reasonable defaults
+            $bedrooms = $this->generateBedrooms($propertyType, $faker);
+            $bathrooms = $this->generateBathrooms($propertyType, $faker);
 
             DB::table('properties')->insert([
                 'owner_id' => $faker->numberBetween(2, 10), // Assuming owners have IDs 2-10
@@ -68,6 +72,8 @@ class PropertySeeder extends Seeder
                     'longitude' => $location['lng'] + $faker->randomFloat(6, -0.1, 0.1),
                 ]),
                 'size' => $size,
+                'bedrooms' => $bedrooms,
+                'bathrooms' => $bathrooms,
                 'property_state' => $propertyState,
                 'created_at' => $faker->dateTimeBetween('-1 year', 'now'),
                 'updated_at' => now(),
@@ -110,6 +116,34 @@ class PropertySeeder extends Seeder
     }
 
     /**
+     * Generate number of bedrooms based on property type
+     */
+    private function generateBedrooms(string $propertyType, $faker): int
+    {
+        return match($propertyType) {
+            'Apartment' => $faker->numberBetween(1, 4),
+            'Villa' => $faker->numberBetween(3, 7),
+            'Duplex' => $faker->numberBetween(2, 5),
+            'Roof' => $faker->numberBetween(1, 3),
+            'Land' => 0,
+        };
+    }
+
+    /**
+     * Generate number of bathrooms based on property type
+     */
+    private function generateBathrooms(string $propertyType, $faker): int
+    {
+        return match($propertyType) {
+            'Apartment' => $faker->numberBetween(1, 3),
+            'Villa' => $faker->numberBetween(2, 5),
+            'Duplex' => $faker->numberBetween(2, 4),
+            'Roof' => $faker->numberBetween(1, 2),
+            'Land' => 0,
+        };
+    }
+
+    /**
      * Generate property title
      */
     private function generateTitle(string $propertyType, string $city, $faker): string
@@ -117,7 +151,7 @@ class PropertySeeder extends Seeder
         $adjectives = ['Luxury', 'Modern', 'Spacious', 'Beautiful', 'Elegant', 'Contemporary', 'Charming'];
         $features = ['with Pool', 'City View', 'Garden', 'Parking', 'Renovated', 'Furnished'];
 
-        return $faker->randomElement($adjectives) . " " . $propertyType . 
+        return $faker->randomElement($adjectives) . " " . $propertyType .
                " in " . $city . " " . $faker->optional(0.6)->randomElement($features);
     }
 

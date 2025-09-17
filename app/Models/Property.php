@@ -23,6 +23,7 @@ class Property extends Model
         'location',
         'size',
         'property_state',
+        'status',  
     ];
 
     protected $casts = [
@@ -72,4 +73,52 @@ class Property extends Model
     {
         return $this->hasMany(Review::class, 'property_id');
     }
+
+//////////////////////////////////////////
+//////////////////////////////////////////
+// Admin dashboard
+
+// New relationship for admin dashboard
+public function transactions()
+{
+    return $this->hasMany(Transaction::class);
+}
+
+// Admin scopes
+public function scopePending($query)
+{
+    return $query->where('property_state', 'Pending');
+}
+
+public function scopeValid($query)
+{
+    return $query->where('property_state', 'Valid');
+}
+
+public function scopeRented($query)
+{
+    return $query->where('property_state', 'Rented');
+}
+
+public function scopeSold($query)
+{
+    return $query->where('property_state', 'Sold');
+}
+
+// Admin helper methods
+public function isPending(): bool
+{
+    return $this->property_state === 'Pending';
+}
+
+public function isValid(): bool
+{
+    return $this->property_state === 'Valid';
+}
+
+// Statistics methods for dashboard
+public function getTotalRevenueAttribute(): float
+{
+    return $this->transactions()->where('status', 'success')->sum('amount');
+}
 }
