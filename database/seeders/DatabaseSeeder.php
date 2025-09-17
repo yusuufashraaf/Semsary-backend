@@ -22,6 +22,7 @@ class DatabaseSeeder extends Seeder
         NotificationSeeder::class, // Notifications
         BookingSeeder::class,  // Finally bookings
         PurchaseSeeder::class,
+        AdminUserManagementSeeder::class,
         // ... other seeders like ReviewSeeder
     ]);
         // User::factory()->create([
