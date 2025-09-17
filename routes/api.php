@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\ImageOfId;
 use App\Http\Controllers\Api\forgetPasswordController;
 use App\Http\Controllers\Api\GoogleAuthController;
 use App\Http\Controllers\Api\resetPassVerification;
+use App\Http\Controllers\Api\ValidationController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -46,6 +47,12 @@ Route::post('/verify-reset-token', [resetPassVerification::class, 'verifyToken']
 Route::get('auth/google/redirect', [GoogleAuthController::class, 'redirectToGoogle']);
 Route::get('auth/google/callback', [GoogleAuthController::class, 'handleGoogleCallback']);
 
+Route::prefix('check-availability')->group(function () {
+
+    Route::get('/email', [ValidationController::class, 'checkEmail']);
+
+    Route::get('/phone', [ValidationController::class, 'checkPhone']);
+});
 
 // Protected routes
 Route::middleware('auth:api')->group(function () {
