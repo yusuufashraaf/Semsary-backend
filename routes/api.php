@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\forgetPasswordController;
 use App\Http\Controllers\Api\GoogleAuthController;
 use App\Http\Controllers\Api\resetPassVerification;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Api\UserController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -52,9 +53,6 @@ Route::get('auth/google/callback', [GoogleAuthController::class, 'handleGoogleCa
 Route::middleware('auth:api')->group(function () {
     Route::post('profile', [AuthenticationController::class, 'profile']);
     Route::post('/logout', [AuthenticationController::class, 'logout']);
-
-
-
 });
 
 Route::get('/features', [FeatureController::class, 'index']);
@@ -70,6 +68,7 @@ Route::prefix('propertiesList')->group(function () {
     Route::get('/', [PropertyListController::class, 'index']);
     Route::get('/filters', [PropertyListController::class, 'filterOptions']);
     Route::get('/filtersOptions', [FiltersController::class, 'index']);
+    Route::get('/{id}', [PropertyListController::class, 'show']);
     Route::get('/{id}', [PropertyController::class, 'showAnyone']);
 });
 
@@ -120,4 +119,13 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
         Route::post('/{id}/status', [App\Http\Controllers\Admin\PropertyController::class, 'updateStatus']);
         Route::delete('/{id}', [App\Http\Controllers\Admin\PropertyController::class, 'destroy']);
     });
+});
+
+Route::prefix('user/{id}')->group(function ($id) {
+    Route::get('/', [UserController::class, 'index']);
+    Route::get('/reviews', [UserController::class, 'reviews']);
+    Route::get('/properties', [UserController::class, 'properties']);
+    Route::get('/notifications', [UserController::class, 'notifications']);
+    Route::get('/purchases', [UserController::class, 'purchases']);
+    Route::get('/bookings', [UserController::class, 'bookings']);
 });
