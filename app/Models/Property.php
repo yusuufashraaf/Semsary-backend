@@ -2,10 +2,15 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Property extends Model
 {
+    use HasFactory;
+
+    protected $table = 'properties';
+
     protected $fillable = [
         'owner_id',
         'title',
@@ -21,33 +26,51 @@ class Property extends Model
     ];
 
     protected $casts = [
-        'location' => 'array', // Cast JSON to array
+        'location' => 'array',   // JSON → array
+        'bedrooms' => 'integer',
+        'bathrooms' => 'integer',
+        'price' => 'decimal:2',
     ];
 
+    /* ---------------- Relationships ---------------- */
+
+    // Owner of the property
+    public function owner()
+    {
+        return $this->belongsTo(User::class, 'owner_id');
+    }
+
+
+
+
+    // Features / amenities
     public function features()
     {
-        return $this->belongsToMany(Feature::class, 'property_features');
+        return $this->belongsToMany(Feature::class, 'property_features', 'property_id', 'feature_id');
     }
+
+    // Property images
     public function images()
     {
-        return $this->hasMany(PropertyImage::class);
+        return $this->hasMany(PropertyImage::class, 'property_id');
     }
 
+    // Optional: documents related to property
     public function documents()
     {
-        return $this->hasMany(PropertyDocument::class);
+        return $this->hasMany(PropertyDocument::class, 'property_id');
     }
 
-    public function bookings(){
-        return $this->hasMany(Booking::class);
-    }
-
-    public function reviews(){
-        return $this->hasMany(Review::class);
-    }
-    public function user()//owner
+    // Bookings
+    public function bookings()
     {
-       return $this->belongsTo(User::class);
+        return $this->hasMany(Booking::class, 'property_id');
+    }
+
+    // Reviews
+    public function reviews()
+    {
+        return $this->hasMany(Review::class, 'property_id');
     }
 
 //////////////////////////////////////////
