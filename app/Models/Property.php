@@ -23,6 +23,7 @@ class Property extends Model
         'location',
         'size',
         'property_state',
+        'status',  
     ];
 
     protected $casts = [
