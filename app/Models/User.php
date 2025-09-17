@@ -7,6 +7,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Passport\HasApiTokens;
 use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class User extends Authenticatable implements JWTSubject
 {
@@ -226,5 +227,67 @@ public function getTotalTransactionsAttribute(): int
 public function getTotalSpentAttribute(): float
 {
     return $this->transactions()->where('status', 'success')->sum('amount');
+}
+
+//////////////////////////////////////////
+//////////////////////////////////////////
+// CS Agent dashboard
+// NEW: CS Agent Property Assignment relationships
+public function csAgentAssignments(): HasMany
+{
+    return $this->hasMany(CSAgentPropertyAssign::class, 'cs_agent_id');
+}
+
+public function assignedByMe(): HasMany
+{
+    return $this->hasMany(CSAgentPropertyAssign::class, 'assigned_by');
+}
+
+// CS Agent specific scopes
+public function scopeCSAgents($query)
+{
+    return $query->where('role', 'agent')->where('status', 'active');
+}
+
+// CS Agent specific methods
+public function getActiveAssignmentsCount(): int
+{
+    return $this->csAgentAssignments()
+                ->whereIn('status', ['pending', 'in_progress'])
+                ->count();
+}
+
+public function getCompletedAssignmentsCount(): int
+{
+    return $this->csAgentAssignments()
+                ->where('status', 'completed')
+                ->count();
+}
+
+public function getAverageCompletionTime(): ?float
+{
+    $completedAssignments = $this->csAgentAssignments()
+                                ->where('status', 'completed')
+                                ->whereNotNull('started_at')
+                                ->whereNotNull('completed_at')
+                                ->get();
+
+    if ($completedAssignments->isEmpty()) {
+        return null;
+    }
+
+    $totalHours = $completedAssignments->sum(function ($assignment) {
+        return $assignment->started_at->diffInHours($assignment->completed_at);
+    });
+
+    return round($totalHours / $completedAssignments->count(), 2);
+}
+
+public function getCurrentAssignments()
+{
+    return $this->csAgentAssignments()
+                ->with(['property', 'assignedBy'])
+                ->whereIn('status', ['pending', 'in_progress'])
+                ->orderBy('assigned_at', 'asc');
 }
 }
