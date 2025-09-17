@@ -48,9 +48,25 @@ class PropertyListController extends Controller
         if ($request->filled('priceMin')) {
             $query->where('price', '>=', $request->priceMin);
         }
+        // Price Type filter
+        if ($request->filled('price_type')) {
+            $query->where('price_type', $request->price_type);
+        }
+
 
         if ($request->filled('priceMax')) {
             $query->where('price', '<=', $request->priceMax);
+        }
+        if ($request->filled('amenities')) {
+            $amenities = is_array($request->amenities)
+                ? $request->amenities
+                : explode(',', $request->amenities); // fallback if it's a string
+
+            foreach ($amenities as $amenity) {
+                $query->whereHas('features', function ($q) use ($amenity) {
+                    $q->whereRaw('LOWER(name) = ?', [strtolower(trim($amenity))]);
+                });
+            }
         }
 
         // Sorting

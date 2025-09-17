@@ -24,6 +24,9 @@ class UpdatePropertyRequest extends FormRequest
     return [
         'user_id' => 'sometimes|exists:users,id',
         'title' => 'sometimes|string|max:255',
+        'description' => 'sometimes|string|min:10',
+        'bedrooms'    => 'sometimes|integer|min:1',
+        'bathrooms'   => 'sometimes|integer|min:1',
         'type' => 'sometimes|string',
         'price' => 'sometimes|numeric',
         'price_type' => 'sometimes|string',

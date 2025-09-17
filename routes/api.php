@@ -1,6 +1,7 @@
 <?php
 use App\Http\Controllers\Api\FiltersController;
 use App\Http\Controllers\Api\PropertyListController;
+use App\Http\Controllers\Api\WishlistController;
 use App\Http\Controllers\FeatureController;
 use App\Http\Controllers\OwnerDashboardController;
 use App\Http\Controllers\PropertyDetailsController;
@@ -14,6 +15,9 @@ use App\Http\Controllers\Api\forgetPasswordController;
 use App\Http\Controllers\Api\GoogleAuthController;
 use App\Http\Controllers\Api\resetPassVerification;
 use App\Http\Controllers\Api\ValidationController;
+use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Api\UserController;
+
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -42,7 +46,7 @@ Route::post('/reset-password', [resetPassVerification::class, 'resetPassword']);
 Route::post('/verify-reset-token', [resetPassVerification::class, 'verifyToken']);
 
 
- Route::post('auth/google/exchange', [GoogleAuthController::class, 'exchangeToken']);
+Route::post('auth/google/exchange', [GoogleAuthController::class, 'exchangeToken']);
 
 Route::get('auth/google/redirect', [GoogleAuthController::class, 'redirectToGoogle']);
 Route::get('auth/google/callback', [GoogleAuthController::class, 'handleGoogleCallback']);
@@ -58,9 +62,6 @@ Route::prefix('check-availability')->group(function () {
 Route::middleware('auth:api')->group(function () {
     Route::post('profile', [AuthenticationController::class, 'profile']);
     Route::post('/logout', [AuthenticationController::class, 'logout']);
-
-
-
 });
 
 Route::get('/features', [FeatureController::class, 'index']);
@@ -76,7 +77,72 @@ Route::prefix('propertiesList')->group(function () {
     Route::get('/', [PropertyListController::class, 'index']);
     Route::get('/filters', [PropertyListController::class, 'filterOptions']);
     Route::get('/filtersOptions', [FiltersController::class, 'index']);
+    Route::get('/{id}', [PropertyListController::class, 'show']);
     Route::get('/{id}', [PropertyController::class, 'showAnyone']);
 });
 
 Route::get('/properties/{id}/reviews', [ReviewController::class, 'index']);
+
+
+// Admin routes
+Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
+    // Existing admin dashboard routes - SEM-60: Admin Dashboard API Implementation
+    Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
+    Route::get('/dashboard/charts/revenue', [DashboardController::class, 'getRevenueChart']);
+    Route::get('/dashboard/charts/users', [DashboardController::class, 'getUsersChart']);
+    Route::get('/dashboard/charts/properties', [DashboardController::class, 'getPropertiesChart']);
+
+    // SEM-61: Simple Admin Users Management Routes
+    Route::prefix('users')->group(function () {
+        // Search and statistics (must come before parameterized routes)
+        Route::get('/search', [App\Http\Controllers\Admin\UserController::class, 'search']);
+        Route::get('/statistics', [App\Http\Controllers\Admin\UserController::class, 'statistics']);
+        Route::get('/requires-attention', [App\Http\Controllers\Admin\UserController::class, 'requiresAttention']);
+
+        // View users
+        Route::get('/', [App\Http\Controllers\Admin\UserController::class, 'index']);
+        Route::get('/{id}', [App\Http\Controllers\Admin\UserController::class, 'show']);
+
+        // User status management
+        Route::post('/{id}/activate', [App\Http\Controllers\Admin\UserController::class, 'activate']);
+        Route::post('/{id}/suspend', [App\Http\Controllers\Admin\UserController::class, 'suspend']);
+        Route::post('/{id}/block', [App\Http\Controllers\Admin\UserController::class, 'block']);
+
+        // User activity
+        Route::get('/{id}/activity', [App\Http\Controllers\Admin\UserController::class, 'getUserActivity']);
+    });
+
+    // SEM-62: Admin Properties Management Routes
+    Route::prefix('properties')->group(function () {
+        // Search and statistics MUST come first (before /{id})
+        Route::get('/search', [App\Http\Controllers\Admin\PropertyController::class, 'search']);
+        Route::get('/statistics', [App\Http\Controllers\Admin\PropertyController::class, 'getStatistics']);
+        Route::get('/requires-attention', [App\Http\Controllers\Admin\PropertyController::class, 'requiresAttention']);
+
+        // Bulk operations
+        Route::post('/bulk/approve', [App\Http\Controllers\Admin\PropertyController::class, 'bulkApprove']);
+        Route::post('/bulk/reject', [App\Http\Controllers\Admin\PropertyController::class, 'bulkReject']);
+
+        // Individual property operations
+        Route::get('/', [App\Http\Controllers\Admin\PropertyController::class, 'index']);
+        Route::get('/{id}', [App\Http\Controllers\Admin\PropertyController::class, 'show']);
+        Route::post('/{id}/status', [App\Http\Controllers\Admin\PropertyController::class, 'updateStatus']);
+        Route::delete('/{id}', [App\Http\Controllers\Admin\PropertyController::class, 'destroy']);
+    });
+});
+
+Route::prefix('user/{id}')->group(function ($id) {
+    Route::get('/', [UserController::class, 'index']);
+    Route::get('/reviews', [UserController::class, 'reviews']);
+    Route::get('/properties', [UserController::class, 'properties']);
+    Route::get('/notifications', [UserController::class, 'notifications']);
+    Route::get('/purchases', [UserController::class, 'purchases']);
+    Route::get('/bookings', [UserController::class, 'bookings']);
+});
+
+Route::middleware('auth:api')->group(function () {
+    Route::get('/wishlist', [WishlistController::class, 'index']);
+    Route::post('/wishlist', [WishlistController::class, 'store']);
+    Route::delete('/wishlist/{propertyId}', [WishlistController::class, 'destroy']);
+});
+
