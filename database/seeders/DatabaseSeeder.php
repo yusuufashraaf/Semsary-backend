@@ -27,6 +27,7 @@ class DatabaseSeeder extends Seeder
             propertyFeatureSeeder::class,
             propertyImageSeeder::class,
             purchaseSeeder::class,
+            AdminUserManagementSeeder::class,
             // Add other seeders as needed
         // ... other seeders like ReviewSeeder
     ]);
