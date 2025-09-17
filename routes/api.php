@@ -1,6 +1,7 @@
 <?php
 use App\Http\Controllers\Api\FiltersController;
 use App\Http\Controllers\Api\PropertyListController;
+use App\Http\Controllers\Api\WishlistController;
 use App\Http\Controllers\FeatureController;
 use App\Http\Controllers\OwnerDashboardController;
 use App\Http\Controllers\PropertyDetailsController;
@@ -43,7 +44,7 @@ Route::post('/reset-password', [resetPassVerification::class, 'resetPassword']);
 Route::post('/verify-reset-token', [resetPassVerification::class, 'verifyToken']);
 
 
- Route::post('auth/google/exchange', [GoogleAuthController::class, 'exchangeToken']);
+Route::post('auth/google/exchange', [GoogleAuthController::class, 'exchangeToken']);
 
 Route::get('auth/google/redirect', [GoogleAuthController::class, 'redirectToGoogle']);
 Route::get('auth/google/callback', [GoogleAuthController::class, 'handleGoogleCallback']);
@@ -128,4 +129,10 @@ Route::prefix('user/{id}')->group(function ($id) {
     Route::get('/notifications', [UserController::class, 'notifications']);
     Route::get('/purchases', [UserController::class, 'purchases']);
     Route::get('/bookings', [UserController::class, 'bookings']);
+});
+
+Route::middleware('auth:api')->group(function () {
+    Route::get('/wishlist', [WishlistController::class, 'index']);
+    Route::post('/wishlist', [WishlistController::class, 'store']);
+    Route::delete('/wishlist/{propertyId}', [WishlistController::class, 'destroy']);
 });
