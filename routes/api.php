@@ -77,9 +77,29 @@ Route::get('/properties/{id}/reviews', [ReviewController::class, 'index']);
 
 // Admin routes
 Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
-    // Admin Dashboard Statistics - SEM-60: Admin Dashboard API Implementation
+    // Existing admin dashboard routes - SEM-60: Admin Dashboard API Implementation
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
     Route::get('/dashboard/charts/revenue', [DashboardController::class, 'getRevenueChart']);
     Route::get('/dashboard/charts/users', [DashboardController::class, 'getUsersChart']);
     Route::get('/dashboard/charts/properties', [DashboardController::class, 'getPropertiesChart']);
+
+    // SEM-61: Simple Admin Users Management Routes
+    Route::prefix('users')->group(function () {
+        // Search and statistics (must come before parameterized routes)
+        Route::get('/search', [App\Http\Controllers\Admin\UserController::class, 'search']);
+        Route::get('/statistics', [App\Http\Controllers\Admin\UserController::class, 'statistics']);
+        Route::get('/requires-attention', [App\Http\Controllers\Admin\UserController::class, 'requiresAttention']);
+
+        // View users
+        Route::get('/', [App\Http\Controllers\Admin\UserController::class, 'index']);
+        Route::get('/{id}', [App\Http\Controllers\Admin\UserController::class, 'show']);
+
+        // User status management
+        Route::post('/{id}/activate', [App\Http\Controllers\Admin\UserController::class, 'activate']);
+        Route::post('/{id}/suspend', [App\Http\Controllers\Admin\UserController::class, 'suspend']);
+        Route::post('/{id}/block', [App\Http\Controllers\Admin\UserController::class, 'block']);
+
+        // User activity
+        Route::get('/{id}/activity', [App\Http\Controllers\Admin\UserController::class, 'getUserActivity']);
+    });
 });
