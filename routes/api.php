@@ -3,6 +3,7 @@ use App\Http\Controllers\Api\FiltersController;
 use App\Http\Controllers\Api\PropertyListController;
 use App\Http\Controllers\FeatureController;
 use App\Http\Controllers\OwnerDashboardController;
+use App\Http\Controllers\PropertyDetailsController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PropertyController;
@@ -58,6 +59,7 @@ Route::prefix('propertiesList')->group(function () {
     Route::get('/filters', [PropertyListController::class, 'filterOptions']);
     Route::get('/filtersOptions', [FiltersController::class, 'index']);
     Route::get('/{id}', [PropertyListController::class, 'show']);
+    Route::get('/{id}', [PropertyController::class, 'showAnyone']);
 });
 
 Route::prefix('user/{id}')->group(function ($id) {
@@ -68,3 +70,4 @@ Route::prefix('user/{id}')->group(function ($id) {
     Route::get('/purchases', [UserController::class, 'purchases']);
     Route::get('/bookings', [UserController::class, 'bookings']);
 });
+    
