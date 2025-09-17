@@ -4,12 +4,14 @@ use App\Http\Controllers\Api\PropertyListController;
 use App\Http\Controllers\FeatureController;
 use App\Http\Controllers\OwnerDashboardController;
 use App\Http\Controllers\PropertyDetailsController;
+use App\Http\Controllers\ReviewController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PropertyController;
 use App\Http\Controllers\Api\AuthenticationController;
 use App\Http\Controllers\Api\ImageOfId;
 use App\Http\Controllers\Api\forgetPasswordController;
+use App\Http\Controllers\Api\GoogleAuthController;
 use App\Http\Controllers\Api\resetPassVerification;
 use App\Http\Controllers\Api\UserController;
 
@@ -39,6 +41,13 @@ Route::post('/forgot-password', [forgetPasswordController::class, 'forgetPasswor
 Route::post('/reset-password', [resetPassVerification::class, 'resetPassword']);
 Route::post('/verify-reset-token', [resetPassVerification::class, 'verifyToken']);
 
+
+ Route::post('auth/google/exchange', [GoogleAuthController::class, 'exchangeToken']);
+
+Route::get('auth/google/redirect', [GoogleAuthController::class, 'redirectToGoogle']);
+Route::get('auth/google/callback', [GoogleAuthController::class, 'handleGoogleCallback']);
+
+
 // Protected routes
 Route::middleware('auth:api')->group(function () {
     Route::post('profile', [AuthenticationController::class, 'profile']);
@@ -62,6 +71,8 @@ Route::prefix('propertiesList')->group(function () {
     Route::get('/{id}', [PropertyController::class, 'showAnyone']);
 });
 
+Route::get('/properties/{id}/reviews', [ReviewController::class, 'index']);
+
 Route::prefix('user/{id}')->group(function ($id) {
     Route::get('/', [UserController::class, 'index']);
     Route::get('/reviews', [UserController::class, 'reviews']);
@@ -71,3 +82,4 @@ Route::prefix('user/{id}')->group(function ($id) {
     Route::get('/bookings', [UserController::class, 'bookings']);
 });
     
+

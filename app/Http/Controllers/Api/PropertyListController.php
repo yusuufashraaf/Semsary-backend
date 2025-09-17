@@ -48,6 +48,11 @@ class PropertyListController extends Controller
         if ($request->filled('priceMin')) {
             $query->where('price', '>=', $request->priceMin);
         }
+        // Price Type filter
+        if ($request->filled('price_type')) {
+            $query->where('price_type', $request->price_type);
+        }
+
 
         if ($request->filled('priceMax')) {
             $query->where('price', '<=', $request->priceMax);
