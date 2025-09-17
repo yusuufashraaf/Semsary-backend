@@ -163,7 +163,7 @@ class AuthenticationController extends Controller
                             'whatsapp_otp_expires_at' => null,
                         ]);
 
-                        return response()->json(['message' => 'We were unable to send a verification code to your phone. Please check the number and try again.'], 502); 
+                        return response()->json(['message' => 'We were unable to send a verification code to your phone. Please check the number and try again.'], 502);
                     }
 
 

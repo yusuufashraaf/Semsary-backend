@@ -24,7 +24,12 @@ class UserResource extends JsonResource
             'phone_number' => $this->phone_number,
             'role'         => $this->role,
             'status'       => $this->status,
-            'created_at'   => $this->created_at->toDateTimeString(), // Format dates for consistency
+            'created_at'   => $this->created_at?->toDateTimeString(), // Format dates for consistency
+            'email_verified_at' => $this->email_verified_at?->format('Y-m-d H:i:s'),
+            'phone_verified_at' => $this->phone_verified_at?->format('Y-m-d H:i:s'),
+            // Counts
+            'properties_count' => $this->when(isset($this->properties_count), $this->properties_count),
+            'transactions_count' => $this->when(isset($this->transactions_count), $this->transactions_count),
         ];
     }
 }
