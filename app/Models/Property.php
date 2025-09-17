@@ -4,12 +4,14 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Auth;
 
 class Property extends Model
 {
     use HasFactory;
 
     protected $table = 'properties';
+    protected $appends = ['is_in_wishlist'];
 
     protected $fillable = [
         'owner_id',
@@ -23,7 +25,7 @@ class Property extends Model
         'location',
         'size',
         'property_state',
-        'status',  
+        'status',
     ];
 
     protected $casts = [
@@ -74,51 +76,67 @@ class Property extends Model
         return $this->hasMany(Review::class, 'property_id');
     }
 
-//////////////////////////////////////////
+    //////////////////////////////////////////
 //////////////////////////////////////////
 // Admin dashboard
 
-// New relationship for admin dashboard
-public function transactions()
-{
-    return $this->hasMany(Transaction::class);
-}
+    // New relationship for admin dashboard
+    public function transactions()
+    {
+        return $this->hasMany(Transaction::class);
+    }
 
-// Admin scopes
-public function scopePending($query)
-{
-    return $query->where('property_state', 'Pending');
-}
+    // Admin scopes
+    public function scopePending($query)
+    {
+        return $query->where('property_state', 'Pending');
+    }
 
-public function scopeValid($query)
-{
-    return $query->where('property_state', 'Valid');
-}
+    public function scopeValid($query)
+    {
+        return $query->where('property_state', 'Valid');
+    }
 
-public function scopeRented($query)
-{
-    return $query->where('property_state', 'Rented');
-}
+    public function scopeRented($query)
+    {
+        return $query->where('property_state', 'Rented');
+    }
 
-public function scopeSold($query)
-{
-    return $query->where('property_state', 'Sold');
-}
+    public function scopeSold($query)
+    {
+        return $query->where('property_state', 'Sold');
+    }
 
-// Admin helper methods
-public function isPending(): bool
-{
-    return $this->property_state === 'Pending';
-}
+    // Admin helper methods
+    public function isPending(): bool
+    {
+        return $this->property_state === 'Pending';
+    }
 
-public function isValid(): bool
-{
-    return $this->property_state === 'Valid';
-}
+    public function isValid(): bool
+    {
+        return $this->property_state === 'Valid';
+    }
 
-// Statistics methods for dashboard
-public function getTotalRevenueAttribute(): float
-{
-    return $this->transactions()->where('status', 'success')->sum('amount');
-}
+    // Statistics methods for dashboard
+    public function getTotalRevenueAttribute(): float
+    {
+        return $this->transactions()->where('status', 'success')->sum('amount');
+    }
+    public function getIsInWishlistAttribute()
+    {
+        if (!Auth::check()) {
+            return false;
+        }
+
+        return $this->wishlists()
+            ->where('user_id', Auth::id())
+            ->exists();
+    }
+
+    public function wishlists()
+    {
+        return $this->hasMany(Wishlist::class);
+    }
+
 }
