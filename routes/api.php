@@ -102,4 +102,22 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
         // User activity
         Route::get('/{id}/activity', [App\Http\Controllers\Admin\UserController::class, 'getUserActivity']);
     });
+
+    // SEM-62: Admin Properties Management Routes
+    Route::prefix('properties')->group(function () {
+        // Search and statistics MUST come first (before /{id})
+        Route::get('/search', [App\Http\Controllers\Admin\PropertyController::class, 'search']);
+        Route::get('/statistics', [App\Http\Controllers\Admin\PropertyController::class, 'getStatistics']);
+        Route::get('/requires-attention', [App\Http\Controllers\Admin\PropertyController::class, 'requiresAttention']);
+
+        // Bulk operations
+        Route::post('/bulk/approve', [App\Http\Controllers\Admin\PropertyController::class, 'bulkApprove']);
+        Route::post('/bulk/reject', [App\Http\Controllers\Admin\PropertyController::class, 'bulkReject']);
+
+        // Individual property operations
+        Route::get('/', [App\Http\Controllers\Admin\PropertyController::class, 'index']);
+        Route::get('/{id}', [App\Http\Controllers\Admin\PropertyController::class, 'show']);
+        Route::post('/{id}/status', [App\Http\Controllers\Admin\PropertyController::class, 'updateStatus']);
+        Route::delete('/{id}', [App\Http\Controllers\Admin\PropertyController::class, 'destroy']);
+    });
 });
