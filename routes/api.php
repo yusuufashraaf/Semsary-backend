@@ -15,6 +15,8 @@ use App\Http\Controllers\Api\GoogleAuthController;
 use App\Http\Controllers\Api\resetPassVerification;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Admin\CSAgentPropertyAssignController;
+use App\Http\Controllers\Admin\CSAgentDashboardController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -118,6 +120,66 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
         Route::get('/{id}', [App\Http\Controllers\Admin\PropertyController::class, 'show']);
         Route::post('/{id}/status', [App\Http\Controllers\Admin\PropertyController::class, 'updateStatus']);
         Route::delete('/{id}', [App\Http\Controllers\Admin\PropertyController::class, 'destroy']);
+    });
+
+     // NEW: SEM-64: CS Agent Dashboard API Implementation
+     Route::prefix('cs-agents')->group(function () {
+        // Dashboard overview (must come before parameterized routes)
+        Route::get('/dashboard', [CSAgentDashboardController::class, 'getDashboardData']);
+        Route::get('/dashboard/charts/assignments', [CSAgentDashboardController::class, 'getAssignmentsChart']);
+        Route::get('/dashboard/charts/performance', [CSAgentDashboardController::class, 'getAgentPerformanceChart']);
+        Route::get('/dashboard/charts/workload', [CSAgentDashboardController::class, 'getWorkloadChart']);
+        Route::get('/dashboard/attention', [CSAgentDashboardController::class, 'getAssignmentsRequiringAttention']);
+
+        // Assignment management
+        Route::prefix('assignments')->group(function () {
+            // Statistics and utilities (must come before parameterized routes)
+            Route::get('/statistics', [CSAgentPropertyAssignController::class, 'getStatistics']);
+            Route::get('/available-agents', [CSAgentPropertyAssignController::class, 'getAvailableAgents']);
+
+            // Bulk operations
+            Route::post('/bulk-assign', [CSAgentPropertyAssignController::class, 'bulkAssign']);
+
+            // CRUD operations
+            Route::get('/', [CSAgentPropertyAssignController::class, 'index']);
+            Route::post('/', [CSAgentPropertyAssignController::class, 'store']);
+            Route::get('/{id}', [CSAgentPropertyAssignController::class, 'show']);
+            Route::put('/{id}', [CSAgentPropertyAssignController::class, 'update']);
+            Route::delete('/{id}', [CSAgentPropertyAssignController::class, 'destroy']);
+
+            // Special operations
+            Route::post('/{id}/reassign', [CSAgentPropertyAssignController::class, 'reassign']);
+        });
+    });
+});
+
+// CS Agent routes (for agents to manage their own assignments)
+Route::prefix('cs-agent')->middleware(['auth:api', 'role:agent'])->group(function () {
+    // Agent's own assignments
+    Route::get('/assignments', [CSAgentPropertyAssignController::class, 'index']); // Will filter to current agent
+    Route::get('/assignments/{id}', [CSAgentPropertyAssignController::class, 'show']);
+    Route::put('/assignments/{id}', [CSAgentPropertyAssignController::class, 'update']); // Limited to status updates only
+
+    // Agent's dashboard (simplified version)
+    Route::get('/dashboard', function (Request $request) {
+        $agent = $request->user();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'agent' => [
+                    'id' => $agent->id,
+                    'name' => $agent->full_name,
+                    'email' => $agent->email,
+                ],
+                'assignments' => [
+                    'active' => $agent->getActiveAssignmentsCount(),
+                    'completed' => $agent->getCompletedAssignmentsCount(),
+                    'average_completion_time' => $agent->getAverageCompletionTime(),
+                ],
+                'recent_assignments' => $agent->getCurrentAssignments()->limit(5)->get(),
+            ]
+        ]);
     });
 });
 
