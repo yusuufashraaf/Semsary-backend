@@ -309,4 +309,9 @@ public function getAverageCompletionTime(): ?float
 
     return round($totalHours / $completedAssignments->count(), 2);
 }
+
+public function wishlist()
+{
+    return $this->hasMany(Wishlist::class);
+}
 }

@@ -1,6 +1,7 @@
 <?php
 use App\Http\Controllers\Api\FiltersController;
 use App\Http\Controllers\Api\PropertyListController;
+use App\Http\Controllers\Api\WishlistController;
 use App\Http\Controllers\FeatureController;
 use App\Http\Controllers\OwnerDashboardController;
 use App\Http\Controllers\PropertyDetailsController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\Api\ImageOfId;
 use App\Http\Controllers\Api\forgetPasswordController;
 use App\Http\Controllers\Api\GoogleAuthController;
 use App\Http\Controllers\Api\resetPassVerification;
+use App\Http\Controllers\Api\ValidationController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Api\UserController;
 // Admin controller
@@ -24,6 +26,7 @@ use App\Http\Controllers\Admin\CsAgentController;
 use App\Http\Controllers\CsAgent\PropertyController as CsAgentPropertyController;
 use App\Http\Controllers\CsAgent\PropertyVerificationController;
 use App\Http\Controllers\CsAgent\PropertyDocumentController;
+
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -52,11 +55,17 @@ Route::post('/reset-password', [resetPassVerification::class, 'resetPassword']);
 Route::post('/verify-reset-token', [resetPassVerification::class, 'verifyToken']);
 
 
- Route::post('auth/google/exchange', [GoogleAuthController::class, 'exchangeToken']);
+Route::post('auth/google/exchange', [GoogleAuthController::class, 'exchangeToken']);
 
 Route::get('auth/google/redirect', [GoogleAuthController::class, 'redirectToGoogle']);
 Route::get('auth/google/callback', [GoogleAuthController::class, 'handleGoogleCallback']);
 
+Route::prefix('check-availability')->group(function () {
+
+    Route::get('/email', [ValidationController::class, 'checkEmail']);
+
+    Route::get('/phone', [ValidationController::class, 'checkPhone']);
+});
 
 // Protected routes
 Route::middleware('auth:api')->group(function () {
@@ -82,6 +91,7 @@ Route::prefix('propertiesList')->group(function () {
 });
 
 Route::get('/properties/{id}/reviews', [ReviewController::class, 'index']);
+
 
 // Admin routes
 Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
@@ -215,3 +225,10 @@ Route::prefix('user/{id}')->group(function ($id) {
     Route::get('/purchases', [UserController::class, 'purchases']);
     Route::get('/bookings', [UserController::class, 'bookings']);
 });
+
+Route::middleware('auth:api')->group(function () {
+    Route::get('/wishlist', [WishlistController::class, 'index']);
+    Route::post('/wishlist', [WishlistController::class, 'store']);
+    Route::delete('/wishlist/{propertyId}', [WishlistController::class, 'destroy']);
+});
+
