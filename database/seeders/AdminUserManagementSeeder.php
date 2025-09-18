@@ -116,9 +116,5 @@ class AdminUserManagementSeeder extends Seeder
                 );
             }
         }
-
-        $this->command->info('Simple admin user management seeded successfully!');
-        $this->command->info('Admin login: admin@semsary.com / admin123456');
-        $this->command->info('Test users created with sample admin actions');
     }
 }

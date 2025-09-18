@@ -14,8 +14,19 @@ use App\Http\Controllers\Api\ImageOfId;
 use App\Http\Controllers\Api\forgetPasswordController;
 use App\Http\Controllers\Api\GoogleAuthController;
 use App\Http\Controllers\Api\resetPassVerification;
+use App\Http\Controllers\Api\ValidationController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Api\UserController;
+// Admin controller
+use App\Http\Controllers\Admin\CSAgentPropertyAssignController;
+use App\Http\Controllers\Admin\CSAgentDashboardController;
+use App\Http\Controllers\Admin\PropertyAssignmentController;
+use App\Http\Controllers\Admin\CsAgentController;
+// CsAgent controller
+use App\Http\Controllers\CsAgent\PropertyController as CsAgentPropertyController;
+use App\Http\Controllers\CsAgent\PropertyVerificationController;
+use App\Http\Controllers\CsAgent\PropertyDocumentController;
+
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -54,6 +65,13 @@ Route::get('/properties/{id}/reviews', [ReviewController::class, 'index']);
 Route::get('/properties/feature-listing', [PropertyController::class, 'basicListing']);
 Route::get('/properties/categories', [PropertyController::class, 'typesWithImage']);
 
+Route::prefix('check-availability')->group(function () {
+
+    Route::get('/email', [ValidationController::class, 'checkEmail']);
+
+    Route::get('/phone', [ValidationController::class, 'checkPhone']);
+});
+
 Route::prefix('propertiesList')->group(function () {
     Route::get('/', [PropertyListController::class, 'index']);
     Route::get('/filters', [PropertyListController::class, 'filterOptions']);
@@ -75,6 +93,7 @@ Route::middleware(['auth:api', 'role:owner'])->group(function () {
     //owner dashboard
     Route::get('/owner/dashboard', [OwnerDashboardController::class, 'index']);
 });
+
 
 
 // Admin routes
@@ -121,6 +140,83 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
         Route::get('/{id}', [App\Http\Controllers\Admin\PropertyController::class, 'show']);
         Route::post('/{id}/status', [App\Http\Controllers\Admin\PropertyController::class, 'updateStatus']);
         Route::delete('/{id}', [App\Http\Controllers\Admin\PropertyController::class, 'destroy']);
+
+        // SEM-65 Property Assignment to CS Agent
+        Route::post('/{property}/assign-cs-agent', [PropertyAssignmentController::class, 'store']);
+    });
+
+    // SEM-65 CS Agent Management Routes
+    Route::get('/cs-agents', [CsAgentController::class, 'index']);
+
+     // SEM-64: CS Agent Dashboard API Implementation
+     Route::prefix('cs-agents')->group(function () {
+        // Dashboard overview (must come before parameterized routes)
+        Route::get('/dashboard', [CSAgentDashboardController::class, 'getDashboardData']);
+        Route::get('/dashboard/charts/assignments', [CSAgentDashboardController::class, 'getAssignmentsChart']);
+        Route::get('/dashboard/charts/performance', [CSAgentDashboardController::class, 'getAgentPerformanceChart']);
+        Route::get('/dashboard/charts/workload', [CSAgentDashboardController::class, 'getWorkloadChart']);
+        Route::get('/dashboard/attention', [CSAgentDashboardController::class, 'getAssignmentsRequiringAttention']);
+
+        // Assignment management
+        Route::prefix('assignments')->group(function () {
+            // Statistics and utilities (must come before parameterized routes)
+            Route::get('/statistics', [CSAgentPropertyAssignController::class, 'getStatistics']);
+            Route::get('/available-agents', [CSAgentPropertyAssignController::class, 'getAvailableAgents']);
+
+            // Bulk operations
+            Route::post('/bulk-assign', [CSAgentPropertyAssignController::class, 'bulkAssign']);
+
+            // CRUD operations
+            Route::get('/', [CSAgentPropertyAssignController::class, 'index']);
+            Route::post('/', [CSAgentPropertyAssignController::class, 'store']);
+            Route::get('/{id}', [CSAgentPropertyAssignController::class, 'show']);
+            Route::put('/{id}', [CSAgentPropertyAssignController::class, 'update']);
+            Route::delete('/{id}', [CSAgentPropertyAssignController::class, 'destroy']);
+
+            // Special operations
+            Route::post('/{id}/reassign', [CSAgentPropertyAssignController::class, 'reassign']);
+        });
+    });
+});
+
+// SEM-65 CS Agent routes (for agents to manage their own assignments)
+Route::prefix('cs-agent')->middleware(['auth:api', 'role:agent'])->group(function () {
+    // Get assigned properties (task queue)
+    Route::get('/properties', [CsAgentPropertyController::class, 'index']);
+
+    // Update verification status
+    Route::patch('/properties/{property}/status', [PropertyVerificationController::class, 'update']);
+
+    // Upload verification documents
+    Route::post('/properties/{property}/documents', [PropertyDocumentController::class, 'store']);
+
+    // Agent's dashboard (simplified version)
+    Route::get('/dashboard', function (Request $request) {
+        $agent = $request->user();
+
+        if (!$agent->isCsAgent()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Access denied. User is not a CS Agent.'
+            ], 403);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'agent' => [
+                    'id' => $agent->id,
+                    'name' => $agent->getFullNameAttribute(),
+                    'email' => $agent->email,
+                ],
+                'assignments' => [
+                    'active' => $agent->getActiveAssignmentsCount(),
+                    'completed' => $agent->getCompletedAssignmentsCount(),
+                    'average_completion_time' => $agent->getAverageCompletionTime(),
+                ],
+                'recent_assignments' => $agent->getCurrentAssignments()->limit(5)->get(),
+            ]
+        ]);
     });
 });
 
@@ -138,3 +234,4 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/wishlist', [WishlistController::class, 'store']);
     Route::delete('/wishlist/{propertyId}', [WishlistController::class, 'destroy']);
 });
+
