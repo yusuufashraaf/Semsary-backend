@@ -15,8 +15,15 @@ use App\Http\Controllers\Api\GoogleAuthController;
 use App\Http\Controllers\Api\resetPassVerification;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Api\UserController;
+// Admin controller
 use App\Http\Controllers\Admin\CSAgentPropertyAssignController;
 use App\Http\Controllers\Admin\CSAgentDashboardController;
+use App\Http\Controllers\Admin\PropertyAssignmentController;
+use App\Http\Controllers\Admin\CsAgentController;
+// CsAgent controller
+use App\Http\Controllers\CsAgent\PropertyController as CsAgentPropertyController;
+use App\Http\Controllers\CsAgent\PropertyVerificationController;
+use App\Http\Controllers\CsAgent\PropertyDocumentController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -120,9 +127,15 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
         Route::get('/{id}', [App\Http\Controllers\Admin\PropertyController::class, 'show']);
         Route::post('/{id}/status', [App\Http\Controllers\Admin\PropertyController::class, 'updateStatus']);
         Route::delete('/{id}', [App\Http\Controllers\Admin\PropertyController::class, 'destroy']);
+
+        // SEM-65 Property Assignment to CS Agent
+        Route::post('/{property}/assign-cs-agent', [PropertyAssignmentController::class, 'store']);
     });
 
-     // NEW: SEM-64: CS Agent Dashboard API Implementation
+    // SEM-65 CS Agent Management Routes
+    Route::get('/cs-agents', [CsAgentController::class, 'index']);
+
+     // SEM-64: CS Agent Dashboard API Implementation
      Route::prefix('cs-agents')->group(function () {
         // Dashboard overview (must come before parameterized routes)
         Route::get('/dashboard', [CSAgentDashboardController::class, 'getDashboardData']);
@@ -153,23 +166,34 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
     });
 });
 
-// CS Agent routes (for agents to manage their own assignments)
+// SEM-65 CS Agent routes (for agents to manage their own assignments)
 Route::prefix('cs-agent')->middleware(['auth:api', 'role:agent'])->group(function () {
-    // Agent's own assignments
-    Route::get('/assignments', [CSAgentPropertyAssignController::class, 'index']); // Will filter to current agent
-    Route::get('/assignments/{id}', [CSAgentPropertyAssignController::class, 'show']);
-    Route::put('/assignments/{id}', [CSAgentPropertyAssignController::class, 'update']); // Limited to status updates only
+    // Get assigned properties (task queue)
+    Route::get('/properties', [CsAgentPropertyController::class, 'index']);
+
+    // Update verification status
+    Route::patch('/properties/{property}/status', [PropertyVerificationController::class, 'update']);
+
+    // Upload verification documents
+    Route::post('/properties/{property}/documents', [PropertyDocumentController::class, 'store']);
 
     // Agent's dashboard (simplified version)
     Route::get('/dashboard', function (Request $request) {
         $agent = $request->user();
 
+        if (!$agent->isCsAgent()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Access denied. User is not a CS Agent.'
+            ], 403);
+        }
+
         return response()->json([
-            'status' => 'success',
+            'success' => true,
             'data' => [
                 'agent' => [
                     'id' => $agent->id,
-                    'name' => $agent->full_name,
+                    'name' => $agent->getFullNameAttribute(),
                     'email' => $agent->email,
                 ],
                 'assignments' => [
