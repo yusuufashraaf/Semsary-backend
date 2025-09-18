@@ -10,6 +10,7 @@ use App\Models\Review;
 use App\Models\Notification;
 use App\Models\Purchase;
 use App\Models\Booking;
+use App\Models\Wishlist;
 
 class UserController extends Controller
 {
@@ -20,7 +21,7 @@ class UserController extends Controller
 
     public function reviews(int $id)
     {
-        return Review::with('property','customer')->where('user_id',$id)->get();
+        return Review::with('property','user')->where('user_id',$id)->get();
     }
 
     public function properties(int $id)
@@ -44,5 +45,10 @@ class UserController extends Controller
     {
 
         return Booking::with('property')->where('user_id',$id)->get();
+    }
+
+    public function wishlists(int $id)
+    {
+        return Wishlist::with('property','user')->where('user_id',$id)->get();
     }
 }

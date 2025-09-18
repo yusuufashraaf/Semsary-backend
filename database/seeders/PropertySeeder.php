@@ -2,10 +2,11 @@
 
 namespace Database\Seeders;
 
-use App\Models\Property;
-use App\Models\User;
+use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Faker\Factory as Faker;
 
 class PropertySeeder extends Seeder
 {
@@ -14,295 +15,159 @@ class PropertySeeder extends Seeder
      */
     public function run(): void
     {
-        // Get all user IDs to use as owners
-        $userIds = User::pluck('id')->toArray();
+        // Temporarily disable foreign key constraints
+        Schema::disableForeignKeyConstraints();
+        DB::table('properties')->truncate();
+        Schema::enableForeignKeyConstraints();
 
-        if (empty($userIds)) {
-            // Create a test user if no users exist
-            $userId = DB::table('users')->insertGetId([
-                'name' => 'Property Owner',
-                'email' => 'owner@example.com',
-                'password' => bcrypt('password'),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-            $userIds = [$userId];
-        }
+        $faker = Faker::create();
 
-        $properties = [
-            [
-                'owner_id' => $userIds[array_rand($userIds)],
-                'title' => 'Luxury Apartment in Downtown',
-                'description' => 'Beautiful luxury apartment with stunning city views. Modern amenities and spacious rooms.',
-                'bedrooms' => 3,
-                'bathrooms' => 2,
-                'type' => 'Apartment',
-                'price' => 250000.00,
-                'price_type' => 'FullPay',
-                'location' => [
-                    'city' => 'New York',
-                    'state' => 'NY',
-                    'zip_code' => '10001',
-                    'address' => '123 Main Street',
-                    'latitude' => 40.7128,
-                    'longitude' => -74.0060
-                ],
-                'size' => 1200,
-                'property_state' => 'Valid',
-            ],
-            [
-                'owner_id' => $userIds[array_rand($userIds)],
-                'title' => 'Cozy Villa with Pool',
-                'description' => 'Beautiful villa with private pool and garden. Perfect for family vacations.',
-                'bedrooms' => 4,
-                'bathrooms' => 3,
-                'type' => 'Villa',
-                'price' => 4500.00,
-                'price_type' => 'Monthly',
-                'location' => [
-                    'city' => 'Los Angeles',
-                    'state' => 'CA',
-                    'zip_code' => '90001',
-                    'address' => '456 Oak Avenue',
-                    'latitude' => 34.0522,
-                    'longitude' => -118.2437
-                ],
-                'size' => 2200,
-                'property_state' => 'Rented',
-            ],
-            [
-                'owner_id' => $userIds[array_rand($userIds)],
-                'title' => 'Modern Duplex Unit',
-                'description' => 'Spacious duplex with two floors and private entrance. Modern design and finishes.',
-                'bedrooms' => 3,
-                'bathrooms' => 2,
-                'type' => 'Duplex',
-                'price' => 120.00,
-                'price_type' => 'Daily',
-                'location' => [
-                    'city' => 'Chicago',
-                    'state' => 'IL',
-                    'zip_code' => '60601',
-                    'address' => '789 Pine Street',
-                    'latitude' => 41.8781,
-                    'longitude' => -87.6298
-                ],
-                'size' => 1800,
-                'property_state' => 'Pending',
-            ],
-            [
-                'owner_id' => $userIds[array_rand($userIds)],
-                'title' => 'Elegant Roof Apartment',
-                'description' => 'Unique roof apartment with panoramic city views. Perfect for entertaining.',
-                'bedrooms' => 2,
-                'bathrooms' => 1,
-                'type' => 'Roof',
-                'price' => 1800.00,
-                'price_type' => 'Monthly',
-                'location' => [
-                    'city' => 'Miami',
-                    'state' => 'FL',
-                    'zip_code' => '33101',
-                    'address' => '101 Beach Boulevard',
-                    'latitude' => 25.7617,
-                    'longitude' => -80.1918
-                ],
-                'size' => 950,
-                'property_state' => 'Valid',
-            ],
-            [
-                'owner_id' => $userIds[array_rand($userIds)],
-                'title' => 'Vacant Land for Development',
-                'description' => 'Prime location land ready for construction. Zoned for residential use.',
-                'bedrooms' => 0,
-                'bathrooms' => 0,
-                'type' => 'Land',
-                'price' => 150000.00,
-                'price_type' => 'FullPay',
-                'location' => [
-                    'city' => 'Austin',
-                    'state' => 'TX',
-                    'zip_code' => '73301',
-                    'address' => '202 Development Lane',
-                    'latitude' => 30.2672,
-                    'longitude' => -97.7431
-                ],
-                'size' => 5000,
-                'property_state' => 'Valid',
-            ],
-        ];
-
-        foreach ($properties as $property) {
-            Property::create($property);
-        }
-
-        // Create additional random properties
+        // Predefined property types, price types, and states
         $propertyTypes = ['Apartment', 'Villa', 'Duplex', 'Roof', 'Land'];
         $priceTypes = ['FullPay', 'Monthly', 'Daily'];
         $propertyStates = ['Valid', 'Invalid', 'Pending', 'Rented', 'Sold'];
 
-        for ($i = 0; $i < 15; $i++) {
-            $type = $propertyTypes[array_rand($propertyTypes)];
-            
-            // Adjust bedrooms and bathrooms based on property type
-            if ($type === 'Land') {
-                $bedrooms = 0;
-                $bathrooms = 0;
-            } elseif ($type === 'Roof') {
-                $bedrooms = rand(1, 2);
-                $bathrooms = rand(1, 2);
-            } elseif ($type === 'Duplex') {
-                $bedrooms = rand(2, 4);
-                $bathrooms = rand(2, 3);
-            } else {
-                $bedrooms = rand(1, 5);
-                $bathrooms = rand(1, 4);
-            }
+        // Sample locations (cities with coordinates)
+        $locations = [
+            ['city' => 'New York', 'lat' => 40.7128, 'lng' => -74.0060],
+            ['city' => 'Los Angeles', 'lat' => 34.0522, 'lng' => -118.2437],
+            ['city' => 'Chicago', 'lat' => 41.8781, 'lng' => -87.6298],
+            ['city' => 'Miami', 'lat' => 25.7617, 'lng' => -80.1918],
+            ['city' => 'San Francisco', 'lat' => 37.7749, 'lng' => -122.4194],
+            ['city' => 'Seattle', 'lat' => 47.6062, 'lng' => -122.3321],
+            ['city' => 'Austin', 'lat' => 30.2672, 'lng' => -97.7431],
+            ['city' => 'Boston', 'lat' => 42.3601, 'lng' => -71.0589],
+        ];
 
-            Property::create([
-                'owner_id' => $userIds[array_rand($userIds)],
-                'title' => $this->generatePropertyTitle($type),
-                'description' => $this->generatePropertyDescription($type),
+        // Create 25 properties
+        for ($i = 0; $i < 25; $i++) {
+            $propertyType = $faker->randomElement($propertyTypes);
+            $priceType = $faker->randomElement($priceTypes);
+            $propertyState = $faker->randomElement($propertyStates);
+            $location = $faker->randomElement($locations);
+
+            // Generate appropriate price based on type and price type
+            $price = $this->generatePrice($propertyType, $priceType, $faker);
+
+            // Generate appropriate size based on property type
+            $size = $this->generateSize($propertyType, $faker);
+
+            // Generate bedrooms and bathrooms with reasonable defaults
+            $bedrooms = $this->generateBedrooms($propertyType, $faker);
+            $bathrooms = $this->generateBathrooms($propertyType, $faker);
+
+            DB::table('properties')->insert([
+                'owner_id' => $faker->numberBetween(2, 10), // Assuming owners have IDs 2-10
+                'title' => $this->generateTitle($propertyType, $location['city'], $faker),
+                'description' => $this->generateDescription($propertyType, $location['city'], $faker),
+                'type' => $propertyType,
+                'price' => $price,
+                'price_type' => $priceType,
+                'location' => json_encode([
+                    'city' => $location['city'],
+                    'state' => $faker->stateAbbr(),
+                    'zip_code' => $faker->postcode(),
+                    'address' => $faker->streetAddress(),
+                    'latitude' => $location['lat'] + $faker->randomFloat(6, -0.1, 0.1),
+                    'longitude' => $location['lng'] + $faker->randomFloat(6, -0.1, 0.1),
+                ]),
+                'size' => $size,
                 'bedrooms' => $bedrooms,
                 'bathrooms' => $bathrooms,
-                'type' => $type,
-                'price' => $this->generatePrice($type, $priceTypes[array_rand($priceTypes)]),
-                'price_type' => $priceTypes[array_rand($priceTypes)],
-                'location' => $this->generateLocation(),
-                'size' => $this->generateSize($type),
-                'property_state' => $propertyStates[array_rand($propertyStates)],
+                'property_state' => $propertyState,
+                'created_at' => $faker->dateTimeBetween('-1 year', 'now'),
+                'updated_at' => now(),
             ]);
         }
-
-        $this->command->info('Properties seeded successfully!');
     }
 
     /**
-     * Generate a random property title based on type.
+     * Generate appropriate price based on property type and price type
      */
-    private function generatePropertyTitle(string $type): string
+    private function generatePrice(string $propertyType, string $priceType, $faker): float
     {
-        $adjectives = ['Beautiful', 'Spacious', 'Modern', 'Luxury', 'Cozy', 'Elegant', 'Charming', 'Stunning'];
-        $locations = ['Downtown', 'Hills', 'Beachfront', 'Garden District', 'Financial District', 'Waterfront'];
+        $basePrice = match($propertyType) {
+            'Apartment' => $faker->numberBetween(150000, 800000),
+            'Villa' => $faker->numberBetween(500000, 2000000),
+            'Duplex' => $faker->numberBetween(300000, 1200000),
+            'Roof' => $faker->numberBetween(200000, 800000),
+            'Land' => $faker->numberBetween(50000, 500000),
+        };
 
-        $typeSpecific = [
-            'Apartment' => ['City View', 'Downtown', 'Urban'],
-            'Villa' => ['with Pool', 'Beachfront', 'Luxury'],
-            'Duplex' => ['Family', 'Modern', 'Spacious'],
-            'Roof' => ['Panoramic View', 'Penthouse', 'Skyline'],
-            'Land' => ['Vacant', 'Development', 'Prime Location']
-        ];
-
-        return $adjectives[array_rand($adjectives)] . ' ' . 
-               $type . ' ' . 
-               $typeSpecific[$type][array_rand($typeSpecific[$type])] . ' in ' . 
-               $locations[array_rand($locations)];
+        return match($priceType) {
+            'Monthly' => $basePrice / 12, // Convert annual to monthly
+            'Daily' => $basePrice / 365,  // Convert annual to daily
+            default => $basePrice,        // FullPay remains as is
+        };
     }
 
     /**
-     * Generate a random property description based on type.
+     * Generate appropriate size based on property type
      */
-    private function generatePropertyDescription(string $type): string
+    private function generateSize(string $propertyType, $faker): int
+    {
+        return match($propertyType) {
+            'Apartment' => $faker->numberBetween(500, 2500),
+            'Villa' => $faker->numberBetween(2000, 8000),
+            'Duplex' => $faker->numberBetween(1500, 4000),
+            'Roof' => $faker->numberBetween(800, 2000),
+            'Land' => $faker->numberBetween(1000, 10000),
+        };
+    }
+
+    /**
+     * Generate number of bedrooms based on property type
+     */
+    private function generateBedrooms(string $propertyType, $faker): int
+    {
+        return match($propertyType) {
+            'Apartment' => $faker->numberBetween(1, 4),
+            'Villa' => $faker->numberBetween(3, 7),
+            'Duplex' => $faker->numberBetween(2, 5),
+            'Roof' => $faker->numberBetween(1, 3),
+            'Land' => 0,
+        };
+    }
+
+    /**
+     * Generate number of bathrooms based on property type
+     */
+    private function generateBathrooms(string $propertyType, $faker): int
+    {
+        return match($propertyType) {
+            'Apartment' => $faker->numberBetween(1, 3),
+            'Villa' => $faker->numberBetween(2, 5),
+            'Duplex' => $faker->numberBetween(2, 4),
+            'Roof' => $faker->numberBetween(1, 2),
+            'Land' => 0,
+        };
+    }
+
+    /**
+     * Generate property title
+     */
+    private function generateTitle(string $propertyType, string $city, $faker): string
+    {
+        $adjectives = ['Luxury', 'Modern', 'Spacious', 'Beautiful', 'Elegant', 'Contemporary', 'Charming'];
+        $features = ['with Pool', 'City View', 'Garden', 'Parking', 'Renovated', 'Furnished'];
+
+        return $faker->randomElement($adjectives) . " " . $propertyType .
+               " in " . $city . " " . $faker->optional(0.6)->randomElement($features);
+    }
+
+    /**
+     * Generate property description
+     */
+    private function generateDescription(string $propertyType, string $city, $faker): string
     {
         $descriptions = [
-            'Apartment' => [
-                'Modern apartment with city views and convenient location near amenities.',
-                'Spacious apartment perfect for urban living with easy access to transportation.',
-                'Recently renovated apartment featuring high-quality finishes and modern appliances.'
-            ],
-            'Villa' => [
-                'Luxury villa with private pool, garden, and premium finishes throughout.',
-                'Beautiful villa offering privacy and comfort in a prime location.',
-                'Spacious villa perfect for family living and entertaining guests.'
-            ],
-            'Duplex' => [
-                'Modern duplex unit with two floors and private entrance for added privacy.',
-                'Spacious duplex featuring separate living areas and modern design.',
-                'Family-friendly duplex with ample space and convenient layout.'
-            ],
-            'Roof' => [
-                'Unique roof apartment with stunning panoramic views of the city skyline.',
-                'Modern roof space perfect for entertaining with outdoor living area.',
-                'Elegant roof apartment featuring open concept design and premium finishes.'
-            ],
-            'Land' => [
-                'Prime development land ready for construction in a growing area.',
-                'Vacant land with excellent potential for residential or commercial development.',
-                'Well-located land with easy access to utilities and transportation.'
-            ]
+            'Apartment' => "Beautiful {$propertyType} located in the heart of {$city}. Features modern amenities, spacious rooms, and stunning views. Perfect for urban living with easy access to transportation, shopping, and dining.",
+            'Villa' => "Luxurious {$propertyType} in prestigious {$city} neighborhood. Offers privacy, elegance, and exceptional quality. Includes premium finishes, landscaped gardens, and premium amenities.",
+            'Duplex' => "Spacious {$propertyType} in desirable {$city} area. Ideal for families seeking comfort and style. Features multiple levels, modern kitchen, and outdoor space.",
+            'Roof' => "Unique {$propertyType} apartment with panoramic views of {$city}. Modern design with open concept living, perfect for entertaining and enjoying city life.",
+            'Land' => "Prime {$propertyType} opportunity in growing {$city} area. Excellent investment potential with various development possibilities. Utilities available and ready for construction."
         ];
 
-        return $descriptions[$type][array_rand($descriptions[$type])];
-    }
-
-    /**
-     * Generate appropriate price based on property type and price type.
-     */
-    private function generatePrice(string $type, string $priceType): float
-    {
-        $basePrices = [
-            'Apartment' => ['FullPay' => 200000, 'Monthly' => 1500, 'Daily' => 80],
-            'Villa' => ['FullPay' => 500000, 'Monthly' => 3000, 'Daily' => 150],
-            'Duplex' => ['FullPay' => 350000, 'Monthly' => 2200, 'Daily' => 120],
-            'Roof' => ['FullPay' => 180000, 'Monthly' => 1200, 'Daily' => 70],
-            'Land' => ['FullPay' => 100000, 'Monthly' => 0, 'Daily' => 0] // Land typically not rented monthly/daily
-        ];
-
-        if ($type === 'Land' && $priceType !== 'FullPay') {
-            $priceType = 'FullPay'; // Force FullPay for land
-        }
-
-        $base = $basePrices[$type][$priceType];
-        $variation = $base * 0.3; // 30% variation
-
-        return $base + (rand(-$variation, $variation));
-    }
-
-    /**
-     * Generate appropriate size based on property type.
-     */
-    private function generateSize(string $type): int
-    {
-        $baseSizes = [
-            'Apartment' => 800,
-            'Villa' => 2000,
-            'Duplex' => 1500,
-            'Roof' => 600,
-            'Land' => 3000
-        ];
-
-        $variation = $baseSizes[$type] * 0.4; // 40% variation
-
-        return $baseSizes[$type] + rand(-$variation, $variation);
-    }
-
-    /**
-     * Generate a random location array.
-     */
-    private function generateLocation(): array
-    {
-        $cities = [
-            ['city' => 'New York', 'state' => 'NY', 'zip' => '10001'],
-            ['city' => 'Los Angeles', 'state' => 'CA', 'zip' => '90001'],
-            ['city' => 'Chicago', 'state' => 'IL', 'zip' => '60601'],
-            ['city' => 'Houston', 'state' => 'TX', 'zip' => '77001'],
-            ['city' => 'Phoenix', 'state' => 'AZ', 'zip' => '85001'],
-            ['city' => 'Philadelphia', 'state' => 'PA', 'zip' => '19101'],
-            ['city' => 'San Antonio', 'state' => 'TX', 'zip' => '78201'],
-            ['city' => 'San Diego', 'state' => 'CA', 'zip' => '92101'],
-        ];
-
-        $city = $cities[array_rand($cities)];
-
-        return [
-            'city' => $city['city'],
-            'state' => $city['state'],
-            'zip_code' => $city['zip'],
-            'address' => rand(100, 9999) . ' ' . 
-                        ['Main', 'Oak', 'Pine', 'Maple', 'Cedar', 'Elm', 'Washington', 'Jefferson'][array_rand([0,1,2,3,4,5,6,7])] . ' ' .
-                        ['Street', 'Avenue', 'Boulevard', 'Drive', 'Lane'][array_rand([0,1,2,3,4])],
-            'latitude' => rand(25000000, 45000000) / 1000000,
-            'longitude' => rand(-120000000, -70000000) / 1000000,
-        ];
+        return $descriptions[$propertyType] . " " . $faker->paragraph(2);
     }
 }
