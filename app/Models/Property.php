@@ -106,6 +106,11 @@ public function scopeSold($query)
     return $query->where('property_state', 'Sold');
 }
 
+public function scopeInvalid($query)
+{
+    return $query->where('property_state', 'Invalid');
+}
+
 // Admin helper methods
 public function isPending(): bool
 {
@@ -123,23 +128,38 @@ public function getTotalRevenueAttribute(): float
     return $this->transactions()->where('status', 'success')->sum('amount');
 }
 
+// Helper method for formatted price
 public function getFormattedPriceAttribute(): string
 {
-    return number_format($this->price, 2) . ' ' . ($this->price_type === 'rent' ? '/month' : '');
+    return number_format($this->price, 2) . ' EGP';
 }
 
-public function getLocationStringAttribute(): string
+// Helper method for location string
+public function getLocationStringAttribute(): ?string
 {
-    if (is_array($this->location)) {
-        return $this->location['address'] ?? 'Unknown Location';
+    if (is_array($this->location) && isset($this->location['address'])) {
+        return $this->location['address'];
     }
-    return $this->location ?? 'Unknown Location';
+    return null;
 }
 
-// Filtering scope for admin property management
+// Helper method to get primary image
+public function getPrimaryImageAttribute(): ?string
+{
+    $primaryImage = $this->images()->where('is_primary', true)->first();
+    if ($primaryImage) {
+        return $primaryImage->image_url;
+    }
+
+    $firstImage = $this->images()->first();
+    return $firstImage ? $firstImage->image_url : null;
+}
+
+// Scope for filtering properties with search and filters
 public function scopeWithFilters($query, array $filters)
 {
-    return $query->when($filters['property_state'] ?? null, function ($q, $state) {
+    return $query
+        ->when($filters['property_state'] ?? null, function ($q, $state) {
             if (is_array($state)) {
                 return $q->whereIn('property_state', $state);
             }
@@ -151,22 +171,6 @@ public function scopeWithFilters($query, array $filters)
             }
             return $q->where('type', $type);
         })
-        ->when($filters['owner_id'] ?? null, function ($q, $ownerId) {
-            return $q->where('owner_id', $ownerId);
-        })
-        ->when($filters['cs_agent_id'] ?? null, function ($q, $agentId) {
-            return $q->whereHas('activeAssignment', function ($assignmentQuery) use ($agentId) {
-                $assignmentQuery->where('cs_agent_id', $agentId);
-            });
-        })
-        ->when($filters['assignment_status'] ?? null, function ($q, $status) {
-            if ($status === 'unassigned') {
-                return $q->unassigned();
-            }
-            return $q->whereHas('activeAssignment', function ($assignmentQuery) use ($status) {
-                $assignmentQuery->where('status', $status);
-            });
-        })
         ->when($filters['price_min'] ?? null, function ($q, $priceMin) {
             return $q->where('price', '>=', $priceMin);
         })
@@ -176,14 +180,17 @@ public function scopeWithFilters($query, array $filters)
         ->when($filters['search'] ?? null, function ($q, $search) {
             return $q->where(function ($query) use ($search) {
                 $query->where('title', 'like', "%{$search}%")
-                      ->orWhere('description', 'like', "%{$search}%")
-                      ->orWhereJsonContains('location->address', $search)
-                      ->orWhereHas('owner', function ($ownerQuery) use ($search) {
-                          $ownerQuery->where('first_name', 'like', "%{$search}%")
-                                    ->orWhere('last_name', 'like', "%{$search}%")
-                                    ->orWhere('email', 'like', "%{$search}%");
-                      });
+                      ->orWhere('description', 'like', "%{$search}%");
             });
+        })
+        ->when($filters['owner_id'] ?? null, function ($q, $ownerId) {
+            return $q->where('owner_id', $ownerId);
+        })
+        ->when($filters['date_from'] ?? null, function ($q, $dateFrom) {
+            return $q->where('created_at', '>=', $dateFrom);
+        })
+        ->when($filters['date_to'] ?? null, function ($q, $dateTo) {
+            return $q->where('created_at', '<=', $dateTo);
         });
 }
 
@@ -211,6 +218,12 @@ public function activeAssignment(): HasOne
                 ->latest('assigned_at');
 }
 
+public function latestAssignment()
+{
+    return $this->hasOne(CSAgentPropertyAssign::class, 'property_id')
+        ->latest('assigned_at');
+}
+
 // Get completed assignments
 public function completedAssignments(): HasMany
 {
@@ -232,22 +245,48 @@ public function scopeAssignedToAgent($query, int $agentId)
     });
 }
 
-public function scopeRequiresAttention($query)
+// Method to check if property requires attention (for admin dashboard)
+public function requiresAttention(): bool
 {
-    return $query->where(function ($q) {
-        // Properties that are pending approval
-        $q->where('property_state', 'Pending')
-          // Or properties with rejected assignments
-          ->orWhereHas('csAgentAssignments', function ($assignmentQuery) {
-              $assignmentQuery->where('status', 'rejected')
-                             ->where('created_at', '>=', now()->subDays(7));
-          })
-          // Or properties with stale in-progress assignments
-          ->orWhereHas('activeAssignment', function ($assignmentQuery) {
-              $assignmentQuery->where('status', 'in_progress')
-                             ->where('started_at', '<=', now()->subDays(3));
-          });
-    });
+    // Property requires attention if it's been pending for more than 7 days
+    // or if it has an overdue assignment
+    if ($this->property_state === 'Pending' && $this->created_at->diffInDays(now()) > 7) {
+        return true;
+    }
+
+    $activeAssignment = $this->getActiveAssignment();
+    if ($activeAssignment && $activeAssignment->assigned_at->diffInDays(now()) > 7) {
+        return true;
+    }
+
+    return false;
+}
+
+// NEW: Property state management methods
+public function markAsValid(int $adminId, ?string $reason = null): bool
+{
+    if ($this->property_state !== 'Valid') {
+        $this->update(['property_state' => 'Valid']);
+        // Log admin action if AdminAction model exists
+        if (class_exists('App\Models\AdminAction')) {
+            AdminAction::log($adminId, $this->id, 'approve_property', $reason);
+        }
+        return true;
+    }
+    return false;
+}
+
+public function markAsInvalid(int $adminId, ?string $reason = null): bool
+{
+    if ($this->property_state !== 'Invalid') {
+        $this->update(['property_state' => 'Invalid']);
+        // Log admin action if AdminAction model exists
+        if (class_exists('App\Models\AdminAction')) {
+            AdminAction::log($adminId, $this->id, 'reject_property', $reason);
+        }
+        return true;
+    }
+    return false;
 }
 
 // NEW: CS Agent helper methods
@@ -261,6 +300,14 @@ public function scopeRequiresAttention($query)
         $assignment = $this->activeAssignment;
         return $assignment ? $assignment->csAgent : null;
     }
+
+    public function getActiveAssignment(): ?CSAgentPropertyAssign
+{
+    return $this->csAgentAssignments()
+        ->whereIn('status', ['pending', 'in_progress'])
+        ->latest('assigned_at')
+        ->first();
+}
 
     public function getAssignmentStatus(): ?string
     {

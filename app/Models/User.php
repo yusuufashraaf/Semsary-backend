@@ -121,18 +121,7 @@ public function scopeSuspended($query)
     return $query->where('status', 'suspended');
 }
 
-// NEW: Admin actions relationships
-public function adminActions()
-{
-    return $this->hasMany(AdminAction::class, 'user_id');
-}
-
-public function performedAdminActions()
-{
-    return $this->hasMany(AdminAction::class, 'admin_id');
-}
-
-// Admin helper methods
+// Role check methods
 public function isAdmin(): bool
 {
     return $this->role === 'admin';
@@ -197,80 +186,118 @@ public function blockUser(int $adminId, ?string $reason = null): bool
 // Scope for filtering users with search and filters
 public function scopeWithFilters($query, array $filters)
 {
-    return $query->when($filters['role'] ?? null, function ($q, $role) {
+    return $query
+        ->when($filters['role'] ?? null, function ($q, $role) {
+            if (is_array($role)) {
+                return $q->whereIn('role', $role);
+            }
             return $q->where('role', $role);
         })
         ->when($filters['status'] ?? null, function ($q, $status) {
+            if (is_array($status)) {
+                return $q->whereIn('status', $status);
+            }
             return $q->where('status', $status);
         })
         ->when($filters['search'] ?? null, function ($q, $search) {
             return $q->where(function ($query) use ($search) {
                 $query->where('first_name', 'like', "%{$search}%")
                       ->orWhere('last_name', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%")
-                      ->orWhere('phone_number', 'like', "%{$search}%");
+                      ->orWhere('email', 'like', "%{$search}%");
             });
+        })
+        ->when($filters['date_from'] ?? null, function ($q, $dateFrom) {
+            return $q->where('created_at', '>=', $dateFrom);
+        })
+        ->when($filters['date_to'] ?? null, function ($q, $dateTo) {
+            return $q->where('created_at', '<=', $dateTo);
         });
 }
 
+// Helper method to get full name
 public function getFullNameAttribute(): string
 {
-    return "{$this->first_name} {$this->last_name}";
+    return trim($this->first_name . ' ' . $this->last_name);
 }
 
-// Statistics methods for dashboard
-public function getTotalTransactionsAttribute(): int
+// Helper method for formatted location (if needed)
+public function getLocationStringAttribute(): ?string
 {
-    return $this->transactions()->count();
+    if (is_array($this->location) && isset($this->location['address'])) {
+        return $this->location['address'];
+    }
+    return null;
 }
 
-public function getTotalSpentAttribute(): float
+// Helper method for formatted price (if needed for user-related pricing)
+public function getFormattedPriceAttribute(): ?string
 {
-    return $this->transactions()->where('status', 'success')->sum('amount');
+    // This might be used for user-related pricing in the future
+    return null;
 }
 
 //////////////////////////////////////////
 //////////////////////////////////////////
-// CS Agent dashboard
+// CS Agent Property verification
+
 // NEW: CS Agent Property Assignment relationships
-public function csAgentAssignments(): HasMany
+public function csAgentAssignments()
 {
     return $this->hasMany(CSAgentPropertyAssign::class, 'cs_agent_id');
 }
 
-public function assignedByMe(): HasMany
+public function assignedProperties()
 {
     return $this->hasMany(CSAgentPropertyAssign::class, 'assigned_by');
 }
 
-// CS Agent specific scopes
-public function scopeCSAgents($query)
+// NEW: CS Agent specific scopes
+public function scopeCsAgents($query)
 {
     return $query->where('role', 'agent')->where('status', 'active');
 }
 
-// CS Agent specific methods
+// NEW: CS Agent specific methods
+public function isCsAgent(): bool
+{
+    return $this->role === 'agent'; // Using 'agent' role for CS agents
+}
+
+public function isActiveCsAgent(): bool
+{
+    return $this->isCsAgent() && $this->isActive();
+}
+
+// NEW: CS Agent assignment statistics methods
 public function getActiveAssignmentsCount(): int
 {
     return $this->csAgentAssignments()
-                ->whereIn('status', ['pending', 'in_progress'])
-                ->count();
+        ->whereIn('status', ['pending', 'in_progress'])
+        ->count();
 }
 
 public function getCompletedAssignmentsCount(): int
 {
     return $this->csAgentAssignments()
-                ->where('status', 'completed')
-                ->count();
+        ->where('status', 'completed')
+        ->count();
+}
+
+public function getCurrentAssignments()
+{
+    return $this->csAgentAssignments()
+        ->whereIn('status', ['pending', 'in_progress'])
+        ->with(['property', 'property.owner'])
+        ->orderBy('assigned_at', 'desc');
 }
 
 public function getAverageCompletionTime(): ?float
 {
     $completedAssignments = $this->csAgentAssignments()
-                                ->where('status', 'completed')
-                                ->whereNotNull('started_at')
-                                ->whereNotNull('completed_at')
-                                ->get();
+        ->where('status', 'completed')
+        ->whereNotNull('started_at')
+        ->whereNotNull('completed_at')
+        ->get();
 
     if ($completedAssignments->isEmpty()) {
         return null;
@@ -281,13 +308,5 @@ public function getAverageCompletionTime(): ?float
     });
 
     return round($totalHours / $completedAssignments->count(), 2);
-}
-
-public function getCurrentAssignments()
-{
-    return $this->csAgentAssignments()
-                ->with(['property', 'assignedBy'])
-                ->whereIn('status', ['pending', 'in_progress'])
-                ->orderBy('assigned_at', 'asc');
 }
 }
