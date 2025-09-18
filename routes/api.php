@@ -49,7 +49,18 @@ Route::post('auth/google/exchange', [GoogleAuthController::class, 'exchangeToken
 Route::get('auth/google/redirect', [GoogleAuthController::class, 'redirectToGoogle']);
 Route::get('auth/google/callback', [GoogleAuthController::class, 'handleGoogleCallback']);
 
+Route::get('/properties/{id}/reviews', [ReviewController::class, 'index']);
+// routes/api.php
+Route::get('/properties/feature-listing', [PropertyController::class, 'basicListing']);
+Route::get('/properties/categories', [PropertyController::class, 'typesWithImage']);
 
+Route::prefix('propertiesList')->group(function () {
+    Route::get('/', [PropertyListController::class, 'index']);
+    Route::get('/filters', [PropertyListController::class, 'filterOptions']);
+    Route::get('/filtersOptions', [FiltersController::class, 'index']);
+    Route::get('/{id}', [PropertyListController::class, 'show']);
+    Route::get('/{id}', [PropertyController::class, 'showAnyone']);
+});
 // Protected routes
 Route::middleware('auth:api')->group(function () {
     Route::post('profile', [AuthenticationController::class, 'profile']);
@@ -65,15 +76,6 @@ Route::middleware(['auth:api', 'role:owner'])->group(function () {
     Route::get('/owner/dashboard', [OwnerDashboardController::class, 'index']);
 });
 
-Route::prefix('propertiesList')->group(function () {
-    Route::get('/', [PropertyListController::class, 'index']);
-    Route::get('/filters', [PropertyListController::class, 'filterOptions']);
-    Route::get('/filtersOptions', [FiltersController::class, 'index']);
-    Route::get('/{id}', [PropertyListController::class, 'show']);
-    Route::get('/{id}', [PropertyController::class, 'showAnyone']);
-});
-
-Route::get('/properties/{id}/reviews', [ReviewController::class, 'index']);
 
 // Admin routes
 Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
