@@ -227,6 +227,7 @@ Route::prefix('user/{id}')->group(function ($id) {
     Route::get('/notifications', [UserController::class, 'notifications']);
     Route::get('/purchases', [UserController::class, 'purchases']);
     Route::get('/bookings', [UserController::class, 'bookings']);
+    Route::get('/wishlists', [UserController::class, 'wishlists']);
 });
 
 Route::middleware('auth:api')->group(function () {
