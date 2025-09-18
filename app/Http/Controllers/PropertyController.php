@@ -235,13 +235,6 @@ class PropertyController extends Controller
             ], 403);
         }
 
-        if (in_array($property->property_state, ['Sold', 'Rented'])) {
-            return response()->json([
-                'message' => 'This property cannot be edited because it is already ' . $property->property_state,
-                'success' => false
-            ], 403);
-        }
-
         DB::beginTransaction();
         try {
             // Update main fields
@@ -265,7 +258,7 @@ class PropertyController extends Controller
                 }
             }
 
-            // Replace specific images
+            // Replace specific images: expect replace_images[i][id] and replace_images[i][file]
             if ($request->has('replace_images')) {
                 foreach ($request->replace_images as $i => $entry) {
                     $imgId = $entry['id'] ?? null;
@@ -276,14 +269,17 @@ class PropertyController extends Controller
                     if (!$imageModel)
                         continue;
 
+                    // file will be in request->file("replace_images.$i.file")
                     $file = $request->file("replace_images.$i.file");
                     if (!$file)
                         continue;
 
+                    // delete old from Cloudinary
                     if (!empty($imageModel->public_id)) {
                         $this->cloudinaryService->deleteFile($imageModel->public_id);
                     }
 
+                    // upload new file
                     $res = $this->cloudinaryService->uploadFile(
                         $file,
                         'properties/images',
@@ -301,12 +297,13 @@ class PropertyController extends Controller
                             'height' => $res['height'] ?? null,
                         ]);
                     } else {
+                        //throw exception to rollback
                         throw new \Exception('Cloud upload failed: ' . ($res['error'] ?? 'unknown'));
                     }
                 }
             }
 
-            //Add new images
+            //Add new images (append)
             if ($request->hasFile('images')) {
                 $orderIndex = $property->images()->count();
                 foreach ($request->file('images') as $file) {
@@ -332,7 +329,8 @@ class PropertyController extends Controller
                 }
             }
 
-            // Handle documents
+            //documents:
+            // delete_documents[], replace_documents[i][id]+file, documents[] (new)
             if ($request->filled('delete_documents')) {
                 foreach ($request->delete_documents as $docId) {
                     $doc = $property->documents()->find($docId);
@@ -349,11 +347,9 @@ class PropertyController extends Controller
                     $docId = $entry['id'] ?? null;
                     if (!$docId)
                         continue;
-
                     $docModel = $property->documents()->find($docId);
                     if (!$docModel)
                         continue;
-
                     $file = $request->file("replace_documents.$i.file");
                     if (!$file)
                         continue;
@@ -407,16 +403,6 @@ class PropertyController extends Controller
             ], 500);
         }
     }
-    // feature listing
-    public function latestThree()
-    {
-        $properties = Property::orderBy('created_at', 'desc')
-            ->take(3)
-            ->get();
-
-        return response()->json($properties);
-    }
-
 
 
 
@@ -466,63 +452,6 @@ class PropertyController extends Controller
             'message' => 'Property deleted successfully',
             'success' => true
         ], 200);
-    }
-
-    public function typesWithImage(): JsonResponse
-    {
-        $types = Property::with([
-            'images' => function ($query) {
-                $query->select('id', 'property_id', 'image_url')->limit(1); // only 1 image
-            }
-        ])
-            ->select('id', 'type')
-            ->groupBy('type', 'id')
-            ->get()
-            ->groupBy('type')
-            ->map(function ($items) {
-                $property = $items->first();
-                return [
-                    'id' => $property->id,
-                    'type' => $property->type,
-                    'image' => $property->images->first()->image_url ?? null
-                ];
-            })
-            ->values();
-
-        return response()->json([
-            'message' => 'Property types with images fetched successfully',
-            'data' => $types,
-            'success' => true
-        ], 200);
-    }
-    public function basicListing(): JsonResponse
-    {
-        $properties = Property::with([
-            'images' => function ($q) {
-                $q->select('id', 'property_id', 'image_url')->orderBy('order_index')->limit(1);
-            }
-        ])
-            ->select('id', 'title', 'bedrooms', 'bathrooms', 'size', 'price')
-            ->latest()
-            ->take(3)
-            ->get()
-            ->map(function ($property) {
-                return [
-                    'id' => $property->id,
-                    'title' => $property->title,
-                    'bedrooms' => $property->bedrooms,
-                    'bathrooms' => $property->bathrooms,
-                    'sqft' => $property->size,
-                    'price' => $property->price,
-                    'image' => $property->images->first()->image_url ?? null,
-                ];
-            });
-
-        return response()->json([
-            'message' => 'Featured properties fetched successfully',
-            'data' => $properties,
-            'success' => true
-        ]);
     }
 
 }

@@ -11,9 +11,7 @@ class ReviewResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'reviewer' => $this->user
-                ? trim($this->user->first_name . ' ' . $this->user->last_name)
-                : 'Anonymous',
+            'reviewer' => $this->user?->name ?? 'Anonymous',
             'rating' => (int) $this->rating,
             'review' => $this->comment,
             'date' => $this->created_at?->toDateString(),
