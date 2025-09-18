@@ -468,4 +468,61 @@ class PropertyController extends Controller
         ], 200);
     }
 
+    public function typesWithImage(): JsonResponse
+    {
+        $types = Property::with([
+            'images' => function ($query) {
+                $query->select('id', 'property_id', 'image_url')->limit(1); // only 1 image
+            }
+        ])
+            ->select('id', 'type')
+            ->groupBy('type', 'id')
+            ->get()
+            ->groupBy('type')
+            ->map(function ($items) {
+                $property = $items->first();
+                return [
+                    'id' => $property->id,
+                    'type' => $property->type,
+                    'image' => $property->images->first()->image_url ?? null
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'message' => 'Property types with images fetched successfully',
+            'data' => $types,
+            'success' => true
+        ], 200);
+    }
+    public function basicListing(): JsonResponse
+    {
+        $properties = Property::with([
+            'images' => function ($q) {
+                $q->select('id', 'property_id', 'image_url')->orderBy('order_index')->limit(1);
+            }
+        ])
+            ->select('id', 'title', 'bedrooms', 'bathrooms', 'size', 'price')
+            ->latest()
+            ->take(3)
+            ->get()
+            ->map(function ($property) {
+                return [
+                    'id' => $property->id,
+                    'title' => $property->title,
+                    'bedrooms' => $property->bedrooms,
+                    'bathrooms' => $property->bathrooms,
+                    'sqft' => $property->size,
+                    'price' => $property->price,
+                    'image' => $property->images->first()->image_url ?? null,
+                ];
+            });
+
+        return response()->json([
+            'message' => 'Featured properties fetched successfully',
+            'data' => $properties,
+            'success' => true
+        ]);
+    }
+
 }
