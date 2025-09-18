@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\NotificationPurpose;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -9,37 +10,59 @@ class Notification extends Model
 {
     use HasFactory;
 
+    protected $table = 'notifications';
+
     protected $fillable = [
-        'user_id',
+        'user_id',      // recipient
+        'sender_id',    // who triggered the notification
+        'entity_id',    // related entity (property, booking, etc.)
+        'purpose',      // enum NotificationPurpose
         'title',
         'message',
-        'is_read'
+        'is_read',
     ];
 
     protected $casts = [
-        'is_read' => 'boolean'
+        'is_read' => 'boolean',
+        'purpose' => NotificationPurpose::class, // enum casting
     ];
 
     /**
-     * Get the user that owns the notification
+     * Recipient (who receives the notification).
      */
-    public function user()
+    public function recipient()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, 'user_id');
     }
 
     /**
-     * Mark as read
+     * Sender (who triggered the notification).
      */
-    public function markAsRead()
+    public function sender()
+    {
+        return $this->belongsTo(User::class, 'sender_id');
+    }
+
+    /**
+     * Scope: filter notifications by purpose.
+     */
+    public function scopeByPurpose($query, NotificationPurpose $purpose)
+    {
+        return $query->where('purpose', $purpose);
+    }
+
+    /**
+     * Mark as read.
+     */
+    public function markAsRead(): void
     {
         $this->update(['is_read' => true]);
     }
 
     /**
-     * Mark as unread
+     * Mark as unread.
      */
-    public function markAsUnread()
+    public function markAsUnread(): void
     {
         $this->update(['is_read' => false]);
     }
