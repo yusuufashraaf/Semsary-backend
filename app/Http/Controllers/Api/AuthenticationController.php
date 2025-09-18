@@ -246,7 +246,8 @@ class AuthenticationController extends Controller
     // Get user profile
     public function profile()
     {
-        return response()->json(auth('api')->user());
+    $user = auth('api')->user();
+    return response()->json(compact('user'));
     }
 
     // Logout user (invalidate token)
