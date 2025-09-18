@@ -17,7 +17,7 @@ class AdminActionResource extends JsonResource
             'action' => $this->action,
             'reason' => $this->reason,
             'performed_at' => $this->created_at->format('Y-m-d H:i:s'),
-            'admin' => $this->when($this->relationLoaded('admin'), [
+            'admin' => $this->when($this->relationLoaded('admin') && $this->admin, [
                 'id' => $this->admin->id,
                 'name' => $this->admin->first_name . ' ' . $this->admin->last_name,
                 'email' => $this->admin->email,

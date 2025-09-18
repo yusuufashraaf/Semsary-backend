@@ -95,6 +95,11 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasMany(AuditLog::class);
     }
 
+    public function adminActions()
+    {
+        return $this->hasMany(AdminAction::class, 'user_id');
+    }
+
     // Admin scopes
     public function scopeAdmins($query)
     {
