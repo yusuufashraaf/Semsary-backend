@@ -57,7 +57,7 @@ class User extends Authenticatable implements JWTSubject
 
     public function reviews()
     {
-        return $this->hasMany(Review::class);
+        return $this->hasMany(Review::class, 'user_id');
     }
 
     public function notifications()
@@ -73,6 +73,11 @@ class User extends Authenticatable implements JWTSubject
     public function bookings()
     {
         return $this->hasMany(Booking::class);
+    }
+
+    public function wishlist()
+    {
+        return $this->hasMany(Wishlist::class);
     }
 
     //////////////////////////////////////////
@@ -313,10 +318,5 @@ class User extends Authenticatable implements JWTSubject
         });
 
         return round($totalHours / $completedAssignments->count(), 2);
-    }
-
-    public function wishlist()
-    {
-        return $this->hasMany(Wishlist::class);
     }
 }
