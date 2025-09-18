@@ -142,30 +142,35 @@ class PropertyController extends Controller
         }
 
         // Handle document uploads using CloudinaryService
-        if ($request->hasFile('documents')) {
-            foreach ($request->file('documents') as $file) {
-                $result = $this->cloudinaryService->uploadFile(
-                    $file,
-                    'properties/documents'
-                );
+if ($request->hasFile('documents')) {
+    foreach ($request->file('documents') as $file) {
+        $result = $this->cloudinaryService->uploadFile(
+            $file,
+            'properties/documents',
+            [
+                'resource_type' => 'raw' 
+            ]
+        );
 
-                if ($result['success']) {
-                    $property->documents()->create([
-                        'document_url' => $result['url'],
-                        'public_id' => $result['public_id'], // Store public_id for deletion
-                        'document_type' => $result['format'],
-                        'original_filename' => $result['original_filename'],
-                        'size' => $result['size']
-                    ]);
-                } else {
-                    // Handle upload failure
-                    return response()->json([
-                        'message' => 'Document upload failed: ' . $result['error'],
-                        'success' => false
-                    ], 400);
-                }
-            }
+        if ($result['success']) {
+            $extension = $result['format'] ?? pathinfo($result['original_filename'], PATHINFO_EXTENSION);
+
+            $property->documents()->create([
+                'document_url' => $result['url'],
+                'public_id' => $result['public_id'], 
+                'document_type' => $extension,      
+                'original_filename' => $result['original_filename'],
+                'size' => $result['size']
+            ]);
+        } else {
+            return response()->json([
+                'message' => 'Document upload failed: ' . $result['error'],
+                'success' => false
+            ], 400);
         }
+    }
+}
+
 
         return response()->json([
             'message' => 'Property created successfully',
