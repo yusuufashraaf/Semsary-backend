@@ -93,12 +93,23 @@ class AuthenticationController extends Controller
         }
         public function resendEmailOtp(Request $request)
         {
-            $validator = Validator::make($request->all(), [
-                'user_id' => 'required|integer|exists:users,id',
-            ]);
+           $validator = Validator::make(
+                $request->all(),
+                [
+                    'user_id' => 'required|integer|exists:users,id',
+                ],
+                [
+                    'user_id.required' => 'Something went wrong, please try again.',
+                    'user_id.integer'  => 'Invalid request format.',
+                    'user_id.exists'   => 'User not found.',
+                ]
+            );
 
             if ($validator->fails()) {
-                return response()->json(['errors' => $validator->errors()], 422);
+                return response()->json([
+                    'success' => false,
+                    'message' => $validator->errors()->first(),
+                ], 422);
             }
 
             $user = User::find($request->user_id);
@@ -228,7 +239,10 @@ class AuthenticationController extends Controller
         $credentials = $request->only('email', 'password');
 
         if (!$accessToken = auth('api')->attempt($credentials)) {
-            return response()->json(['error' => 'Unauthorized'], 401);
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid email or password'
+            ], 401);
         }
 
         $user = auth('api')->user();
@@ -246,7 +260,8 @@ class AuthenticationController extends Controller
     // Get user profile
     public function profile()
     {
-        return response()->json(auth('api')->user());
+    $user = auth('api')->user();
+    return response()->json(compact('user'));
     }
 
     // Logout user (invalidate token)

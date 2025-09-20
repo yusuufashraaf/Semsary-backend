@@ -54,6 +54,7 @@ class GoogleAuthController extends Controller
                 return redirect($frontendUrl . '/login?error=auth_failed');
             }
 
+
             $refreshToken = Str::random(60);
             $this->storeRefreshToken($user, $refreshToken);
 
