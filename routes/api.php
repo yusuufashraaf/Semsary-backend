@@ -3,9 +3,12 @@ use App\Http\Controllers\Api\FiltersController;
 use App\Http\Controllers\Api\PropertyListController;
 use App\Http\Controllers\Api\WishlistController;
 use App\Http\Controllers\FeatureController;
+use App\Http\Controllers\ChatbotController;
 use App\Http\Controllers\OwnerDashboardController;
 use App\Http\Controllers\PropertyDetailsController;
+use App\Http\Controllers\ReviewAnalysisController;
 use App\Http\Controllers\ReviewController;
+use App\Models\Review;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PropertyController;
@@ -83,6 +86,7 @@ Route::prefix('propertiesList')->group(function () {
 Route::middleware('auth:api')->group(function () {
     Route::post('profile', [AuthenticationController::class, 'profile']);
     Route::post('/logout', [AuthenticationController::class, 'logout']);
+
 });
 
 Route::get('/features', [FeatureController::class, 'index']);
@@ -235,4 +239,11 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/wishlist', [WishlistController::class, 'store']);
     Route::delete('/wishlist/{propertyId}', [WishlistController::class, 'destroy']);
 });
+
+// AI Routes
+Route::post('/chatbot', [ChatbotController::class, 'handleChat']);
+Route::post('/properties/generate-description', [PropertyController::class, 'generateDescription']);
+//openrouterai
+Route::get('/properties/{property}/reviews/analysis', [ReviewAnalysisController::class, 'analyze']);
+
 
