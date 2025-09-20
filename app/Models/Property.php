@@ -380,4 +380,9 @@ public function markAsInvalid(int $adminId, ?string $reason = null): bool
         return $this->hasMany(Wishlist::class);
     }
 
+    public function getImageUrls()
+{
+    return $this->images->pluck('image_url');
+}
+
 }

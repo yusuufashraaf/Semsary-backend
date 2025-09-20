@@ -238,6 +238,7 @@ Route::prefix('user/{id}')->group(function ($id) {
     Route::get('/purchases', [UserController::class, 'purchases']);
     Route::get('/bookings', [UserController::class, 'bookings']);
     Route::get('/wishlists', [UserController::class, 'wishlists']);
+    Route::patch('/notifications/{notificationid}/read', [UserController::class, 'markAsRead']);
 });
 
 Route::middleware('auth:api')->group(function () {

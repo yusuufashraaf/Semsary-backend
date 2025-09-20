@@ -25,10 +25,16 @@ class UserController extends Controller
         return Review::with('property', 'user')->where('user_id', $id)->get();
     }
 
-    public function properties(int $id)
-    {
-        return Property::where('owner_id', $id)->get();
-    }
+   public function properties(int $id)
+{
+    return Property::with('images')
+        ->where('owner_id', $id)
+        ->get()
+        ->each(function($property) {
+            $property->image = optional($property->images->first())->image_url;
+            unset($property->images);
+        });
+}
 
     public function notifications(int $id)
     {
@@ -49,7 +55,38 @@ class UserController extends Controller
     }
 
     public function wishlists(int $id)
+{
+    return Wishlist::with(['property' => function($query) {
+            $query->with('images');
+        }, 'user'])
+        ->where('user_id', $id)
+        ->get()
+        ->map(function($wishlist) {
+            // Check if images exist and get the first one's URL
+            if ($wishlist->property->images->isNotEmpty()) {
+                $wishlist->property->image = $wishlist->property->images->first()->image_url;
+            } else {
+                $wishlist->property->image = null;
+            }
+            unset($wishlist->property->images);
+            return $wishlist;
+        });
+}
+
+public function markAsRead(int $id,int $notificationid)
     {
-        return Wishlist::with('property', 'user')->where('user_id', $id)->get();
-    }
+        // Verify the notification belongs to the authenticated user
+        $notification = UserNotification::where('id', $notificationid)
+            ->where('user_id', $id)
+            ->firstOrFail();
+
+        $notification->update(['is_read' => !$notification->is_read]);
+
+        return response()->json([
+            'message' => 'Notification marked as read',
+            'notification' => $notification
+        ]);
+    } 
+
+
 }
