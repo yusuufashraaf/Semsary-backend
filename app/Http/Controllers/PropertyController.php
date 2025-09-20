@@ -11,6 +11,8 @@ use App\Services\CloudinaryService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Mockery\CountValidator\Exception;
 
 class PropertyController extends Controller
 {
@@ -142,34 +144,34 @@ class PropertyController extends Controller
         }
 
         // Handle document uploads using CloudinaryService
-if ($request->hasFile('documents')) {
-    foreach ($request->file('documents') as $file) {
-        $result = $this->cloudinaryService->uploadFile(
-            $file,
-            'properties/documents',
-            [
-                'resource_type' => 'raw' 
-            ]
-        );
+        if ($request->hasFile('documents')) {
+            foreach ($request->file('documents') as $file) {
+                $result = $this->cloudinaryService->uploadFile(
+                    $file,
+                    'properties/documents',
+                    [
+                        'resource_type' => 'raw' 
+                    ]
+                );
 
-        if ($result['success']) {
-            $extension = $result['format'] ?? pathinfo($result['original_filename'], PATHINFO_EXTENSION);
+                if ($result['success']) {
+                    $extension = $result['format'] ?? pathinfo($result['original_filename'], PATHINFO_EXTENSION);
 
-            $property->documents()->create([
-                'document_url' => $result['url'],
-                'public_id' => $result['public_id'], 
-                'document_type' => $extension,      
-                'original_filename' => $result['original_filename'],
-                'size' => $result['size']
-            ]);
-        } else {
-            return response()->json([
-                'message' => 'Document upload failed: ' . $result['error'],
-                'success' => false
-            ], 400);
+                    $property->documents()->create([
+                        'document_url' => $result['url'],
+                        'public_id' => $result['public_id'], 
+                        'document_type' => $extension,      
+                        'original_filename' => $result['original_filename'],
+                        'size' => $result['size']
+                    ]);
+                } else {
+                    return response()->json([
+                        'message' => 'Document upload failed: ' . $result['error'],
+                        'success' => false
+                    ], 400);
+                }
+            }
         }
-    }
-}
 
 
         return response()->json([
@@ -422,21 +424,6 @@ if ($request->hasFile('documents')) {
         return response()->json($properties);
     }
 
-
-
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    // public function destroy(string $id)
-    // {
-    //     $property = Property::find($id);
-    //     if (!$property) {
-    //         return response()->json(['message' => 'Property not found'], 404);
-    //     }
-    //     $property->delete();
-    //     return response()->json(['message' => 'Property deleted successfully'], 200);
-    // }
     public function destroy(Property $property): JsonResponse
     {
         $user = auth('api')->user();
@@ -529,5 +516,86 @@ if ($request->hasFile('documents')) {
             'success' => true
         ]);
     }
+
+// AI Property Description
+ public function generateDescription(Request $request)
+{
+    $data = $request->validate([
+        'title' => 'required|string',
+        'bedrooms' => 'required|integer',
+        'bathrooms' => 'required|integer', 
+        'size' => 'required|numeric',
+        'location' => 'required|string',
+    ]);
+
+    try {
+        $apikey = config('services.openrouter.key');
+         if (!$apikey) {
+            return response()->json([
+                'success' => false,
+                'description' => 'OpenRouter API key is not configured.'
+            ], 500);
+        }
+        $response = Http::timeout(30)
+            ->withHeaders([
+                'Authorization' => 'Bearer ' . $apikey,
+                'Content-Type' => 'application/json',
+                'HTTP-Referer' => request()->getHost(),
+                'X-Title' => 'Property Description Generator'
+            ])
+            ->post('https://openrouter.ai/api/v1/chat/completions', [
+                'model' => 'gpt-3.5-turbo',
+                'messages' => [
+                    [
+                        'role' => 'system',
+                        'content' => 'You are a professional real estate description writer. Write engaging, detailed property descriptions.'
+                    ],
+                    [
+                        'role' => 'user',
+                        'content' => "Write a compelling property description for: {$data['title']}, {$data['bedrooms']} bedrooms, {$data['bathrooms']} bathrooms, {$data['size']} sqm, located in {$data['location']}."
+                    ]
+                ],
+                'max_tokens' => 250,
+                'temperature' => 0.7
+            ]);
+
+        \Log::info('OpenRouter Response Status:', ['status' => $response->status()]);
+        \Log::info('OpenRouter Response Body:', ['body' => $response->json()]);
+
+        if ($response->successful()) {
+            $result = $response->json();
+            
+            if (isset($result['choices'][0]['message']['content'])) {
+                return response()->json([
+                    'success' => true,
+                    'description' => trim($result['choices'][0]['message']['content'])
+                ]);
+            }
+            
+
+            return response()->json([
+                'success' => false,
+                'description' => 'No content in AI response',
+                'debug' => $result
+            ]);
+        }
+
+
+        return response()->json([
+            'success' => false,
+            'description' => 'API request failed',
+            'status' => $response->status(),
+            'debug' => $response->json()
+        ]);
+
+    } catch (\Exception $e) {
+        \Log::error('OpenRouter API error:', ['error' => $e->getMessage()]);
+        
+        return response()->json([
+            'success' => false,
+            'description' => 'Connection error: ' . $e->getMessage()
+        ], 500);
+    }
+}
 
 }
