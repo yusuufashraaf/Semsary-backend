@@ -23,7 +23,7 @@ class DatabaseSeeder extends Seeder
             ReviewSeeder::class,
             BathroomSeeder::class,
             BedroomsSeeder::class,
-            notificationSeeder::class,
+            userNotificationSeeder::class,
             propertyFeatureSeeder::class,
             propertyImageSeeder::class,
             purchaseSeeder::class,
