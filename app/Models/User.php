@@ -5,13 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Notifications\DatabaseNotification;
 use Laravel\Passport\HasApiTokens;
 use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class User extends Authenticatable implements JWTSubject
 {
-    use Notifiable,HasApiTokens, HasFactory;
+    use Notifiable, HasApiTokens, HasFactory;
 
     protected $fillable = [
         'first_name',
@@ -40,6 +41,7 @@ class User extends Authenticatable implements JWTSubject
         'phone_verified_at' => 'datetime',
     ];
 
+    // JWT methods
     public function getJWTIdentifier()
     {
         return $this->getKey();
@@ -50,6 +52,7 @@ class User extends Authenticatable implements JWTSubject
         return [];
     }
 
+    // Relationships
     public function properties()
     {
         return $this->hasMany(Property::class, 'owner_id');
@@ -60,9 +63,11 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasMany(Review::class, 'user_id');
     }
 
+    // Fixed notifications relationship
     public function notifications()
     {
-        return $this->hasMany(Notification::class);
+        return $this->morphMany(DatabaseNotification::class, 'notifiable')
+            ->orderBy('created_at', 'desc');
     }
 
     public function purchases()
