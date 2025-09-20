@@ -6,6 +6,7 @@ use App\Http\Controllers\FeatureController;
 use App\Http\Controllers\ChatbotController;
 use App\Http\Controllers\OwnerDashboardController;
 use App\Http\Controllers\PropertyDetailsController;
+use App\Http\Controllers\RentRequestController;
 use App\Http\Controllers\ReviewAnalysisController;
 use App\Http\Controllers\ReviewController;
 use App\Models\Review;
@@ -90,7 +91,6 @@ Route::middleware('auth:api')->group(function () {
 
     Route::post('/logout', [AuthenticationController::class, 'logout']);
 
-
     Route::post('/user/change-email', [ProfileController::class, 'changeEmail']);
 
     Route::post('/user/change-phone', [ProfileController::class, 'changePhoneNumber']);
@@ -162,8 +162,8 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
     // SEM-65 CS Agent Management Routes
     Route::get('/cs-agents', [CsAgentController::class, 'index']);
 
-     // SEM-64: CS Agent Dashboard API Implementation
-     Route::prefix('cs-agents')->group(function () {
+    // SEM-64: CS Agent Dashboard API Implementation
+    Route::prefix('cs-agents')->group(function () {
         // Dashboard overview (must come before parameterized routes)
         Route::get('/dashboard', [CSAgentDashboardController::class, 'getDashboardData']);
         Route::get('/dashboard/charts/assignments', [CSAgentDashboardController::class, 'getAssignmentsChart']);
@@ -251,6 +251,33 @@ Route::middleware('auth:api')->group(function () {
     Route::delete('/wishlist/{propertyId}', [WishlistController::class, 'destroy']);
 });
 
+
+Route::middleware('auth:api')->group(function () {
+    // Rent request creation
+    Route::post('/rent-requests', [RentRequestController::class, 'createRequest']);
+
+    // Cancel by user
+    Route::post('/rent-requests/{id}/cancel', [RentRequestController::class, 'cancelRequestByUser']);
+
+    // Owner actions
+    Route::post('/rent-requests/{id}/confirm', [RentRequestController::class, 'confirmRequestByOwner']);
+    Route::post('/rent-requests/{id}/reject', [RentRequestController::class, 'rejectRequestByOwner']);
+    Route::post('/rent-requests/{id}/cancel-by-owner', [RentRequestController::class, 'cancelConfirmedByOwner']);
+
+    // Payment
+    Route::post('/rent-requests/{id}/pay', [RentRequestController::class, 'payForRequest']);
+
+    // Listings
+    Route::get('/rent-requests/user', [RentRequestController::class, 'listUserRequests']);
+    Route::get('/rent-requests/owner', [RentRequestController::class, 'listOwnerRequests']);
+
+    // Additional endpoints
+    Route::get('/rent-requests/stats', [RentRequestController::class, 'getRequestStats']);
+    Route::get('/rent-requests/{id}', [RentRequestController::class, 'getRequestDetails']);
+});
+
+// System (cron job or scheduler) — protected via console command or internal token
+Route::post('/rent-requests/auto-cancel', [RentRequestController::class, 'autoCancelUnpaidRequests']);
 // AI Routes
 Route::post('/chatbot', [ChatbotController::class, 'handleChat']);
 Route::post('/properties/generate-description', [PropertyController::class, 'generateDescription']);
