@@ -125,7 +125,7 @@ return [
     ],
 
 
-//     'providers' => [
+    //     'providers' => [
 //     CloudinaryLabs\CloudinaryLaravel\CloudinaryServiceProvider::class,
 // ],
 //     'aliases' => [
