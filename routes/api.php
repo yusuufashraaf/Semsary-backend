@@ -3,10 +3,13 @@ use App\Http\Controllers\Api\FiltersController;
 use App\Http\Controllers\Api\PropertyListController;
 use App\Http\Controllers\Api\WishlistController;
 use App\Http\Controllers\FeatureController;
+use App\Http\Controllers\ChatbotController;
 use App\Http\Controllers\OwnerDashboardController;
 use App\Http\Controllers\PropertyDetailsController;
 use App\Http\Controllers\RentRequestController;
+use App\Http\Controllers\ReviewAnalysisController;
 use App\Http\Controllers\ReviewController;
+use App\Models\Review;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PropertyController;
@@ -239,6 +242,7 @@ Route::prefix('user/{id}')->group(function ($id) {
     Route::get('/purchases', [UserController::class, 'purchases']);
     Route::get('/bookings', [UserController::class, 'bookings']);
     Route::get('/wishlists', [UserController::class, 'wishlists']);
+    Route::patch('/notifications/{notificationid}/read', [UserController::class, 'markAsRead']);
 });
 
 Route::middleware('auth:api')->group(function () {
@@ -274,3 +278,10 @@ Route::middleware('auth:api')->group(function () {
 
 // System (cron job or scheduler) — protected via console command or internal token
 Route::post('/rent-requests/auto-cancel', [RentRequestController::class, 'autoCancelUnpaidRequests']);
+// AI Routes
+Route::post('/chatbot', [ChatbotController::class, 'handleChat']);
+Route::post('/properties/generate-description', [PropertyController::class, 'generateDescription']);
+//openrouterai
+Route::get('/properties/{property}/reviews/analysis', [ReviewAnalysisController::class, 'analyze']);
+
+
