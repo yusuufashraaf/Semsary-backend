@@ -42,177 +42,167 @@ class RentRequestController extends Controller
     /**
      * Create a new rent request
      */
-    public function createRequest(Request $request)
-    {
-        // Enhanced validation
-        $validator = \Validator::make($request->all(), [
-            'property_id' => 'required|integer|exists:properties,id',
-            'check_in' => 'required|date|after:today',
-            'check_out' => 'required|date|after:check_in',
-            'guests' => 'integer|min:1|max:20',
-            'total_price' => 'numeric|min:0',
-            'nights' => 'integer|min:1',
-            'price_per_night' => 'numeric|min:0',
-            'message' => 'nullable|string|max:500',
-        ]);
+public function createRequest(Request $request)
+{
+    // Minimal validation - only the essentials
+    $validator = \Validator::make($request->all(), [
+        'property_id' => 'required|integer|exists:properties,id',
+        'check_in' => 'required|date|after:today',
+        'check_out' => 'required|date|after:check_in',
+    ]);
 
-        if ($validator->fails()) {
-            return $this->error('Validation failed.', 422, $validator->errors());
-        }
-
-        $user = $request->user();
-        if (!$user) {
-            return $this->error('Authentication required.', 401);
-        }
-
-        // Basic business validations
-        if ($user->status != "active") {
-            return $this->error('Your account must be verified before making requests.', 403);
-        }
-
-        // Rate limiting - max 5 requests per hour per user
-        $recentRequests = RentRequest::where('user_id', $user->id)
-            ->where('created_at', '>', Carbon::now()->subHour())
-            ->count();
-
-        if ($recentRequests >= 5) {
-            return $this->error('Too many requests. Please wait before making another request.', 429);
-        }
-
-        // Parse the check-in and check-out dates
-        $checkIn = Carbon::parse($request->input('check_in'))->startOfDay();
-        $checkOut = Carbon::parse($request->input('check_out'))->startOfDay();
-
-        // Check that the check-in date is in the future
-        if ($checkIn->lt(Carbon::today())) {
-            return $this->error('Check-in date must be in the future.', 422);
-        }
-
-        // Check that the check-out date is after the check-in date
-        if ($checkOut->lte($checkIn)) {
-            return $this->error('Check-out must be after check-in.', 422);
-        }
-
-        // Start transaction to handle potential issues with race conditions
-        try {
-            return DB::transaction(function () use ($request, $user, $checkIn, $checkOut) {
-                // Lock property row to prevent concurrent bookings
-                $property = Property::lockForUpdate()->find($request->property_id);
-
-                if (!$property) {
-                    return $this->error('Property not found.', 404);
-                }
-
-                // Prevent owner from requesting their own property
-                if ($property->owner_id === $user->id) {
-                    return $this->error('You cannot make a request for your own property.', 422);
-                }
-
-                // Enhanced property status check
-                if (!in_array($property->property_state, ['Valid', 'Available'])) {
-                    return $this->error('Property is not available for rent.', 422);
-                }
-
-                // Check if property owner account is active
-                if ($property->owner->status !== 'active') {
-                    return $this->error('Property owner account is not active.', 422);
-                }
-
-                // Check if the user is temporarily blocked from requesting this property
-                $blocked = RentRequest::where('property_id', $property->id)
-                    ->where('user_id', $user->id)
-                    ->whereNotNull('blocked_until')
-                    ->where('blocked_until', '>', Carbon::now())
-                    ->exists();
-
-                if ($blocked) {
-                    return $this->error('You are temporarily blocked from requesting this property. Try later.', 403);
-                }
-
-                // Check for cooldown after a cancellation/rejection
-                $cooldown = RentRequest::where('property_id', $property->id)
-                    ->where('user_id', $user->id)
-                    ->whereNotNull('cooldown_expires_at')
-                    ->where('cooldown_expires_at', '>', Carbon::now())
-                    ->exists();
-
-                if ($cooldown) {
-                    return $this->error('You are in cooldown for this property due to a previous cancellation. Try later.', 403);
-                }
-
-                // Check for date overlap with proper locking
-                $overlap = RentRequest::where('property_id', $property->id)
-                    ->whereIn('status', ['pending', 'confirmed', 'paid'])
-                    ->lockForUpdate()
-                    ->where(function ($q) use ($checkIn, $checkOut) {
-                        $q->where(function ($s) use ($checkIn, $checkOut) {
-                            $s->where('check_in', '<', $checkOut)
-                                ->where('check_out', '>', $checkIn);
-                        });
-                    })
-                    ->exists();
-
-                if ($overlap) {
-                    return $this->error('Property already has an active request for the selected dates.', 422);
-                }
-
-                // Validate price calculation server-side
-                $expectedTotal = $request->input('total_price');
-                $nights = $request->input('nights');
-                $pricePerNight = $request->input('price_per_night');
-                $calculatedTotal = $pricePerNight * $nights;
-
-                if ($expectedTotal && abs($calculatedTotal - $expectedTotal) > 0.01) {
-                    return $this->error('Price calculation mismatch. Please refresh and try again.', 422);
-                }
-
-                // Create the rent request
-                $rentRequest = RentRequest::create([
-                    'user_id' => $user->id,
-                    'property_id' => $property->id,
-                    'check_in' => $checkIn->toDateString(),
-                    'check_out' => $checkOut->toDateString(),
-                    'guests' => $request->input('guests', 2),
-                    'total_price' => $expectedTotal,
-                    'nights' => $nights,
-                    'price_per_night' => $pricePerNight,
-                    'message' => $request->input('message'),
-                    'status' => 'pending',
-                ]);
-
-                // Log the action for audit trail
-                Log::info('Rent request created', [
-                    'user_id' => $user->id,
-                    'property_id' => $property->id,
-                    'request_id' => $rentRequest->id,
-                    'dates' => [$checkIn, $checkOut],
-                    'total_price' => $expectedTotal,
-                ]);
-
-                // FIXED: Safe notification with error handling
-                try {
-                    Notification::send($property->owner, new \App\Notifications\RentRequested($rentRequest));
-                } catch (Exception $e) {
-                    Log::warning('Failed to send rent request notification', [
-                        'error' => $e->getMessage(),
-                        'request_id' => $rentRequest->id
-                    ]);
-                    // Don't fail the entire request for notification issues
-                }
-
-                return $this->success('Rent request created successfully.', $rentRequest, 201);
-            });
-        } catch (Exception $e) {
-            // Log error and return failure response
-            Log::error('createRequest error: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
-                'user_id' => $user->id ?? null,
-                'property_id' => $request->property_id ?? null,
-            ]);
-            return $this->error('Failed to create request. Try again later.', 500);
-        }
+    if ($validator->fails()) {
+        return $this->error('check in must be a day after today and check out must be after check in.', 422, $validator->errors());
     }
 
+    $user = $request->user();
+    if (!$user) {
+        return $this->error('Authentication required.', 401);
+    }
+
+    // Basic business validations
+    if ($user->status != "active") {
+        return $this->error('Your account must be verified before making requests.', 403);
+    }
+
+    // Rate limiting - max 5 requests per hour per user
+    $recentRequests = RentRequest::where('user_id', $user->id)
+        ->where('created_at', '>', Carbon::now()->subHour())
+        ->count();
+
+    if ($recentRequests >= 5) {
+        return $this->error('Too many requests. Please wait before making another request.', 429);
+    }
+
+    // Parse the check-in and check-out dates
+    $checkIn = Carbon::parse($request->input('check_in'))->startOfDay();
+    $checkOut = Carbon::parse($request->input('check_out'))->startOfDay();
+
+    // Check that the check-in date is in the future
+    if ($checkIn->lt(Carbon::today())) {
+        return $this->error('Check-in date must be in the future.', 422);
+    }
+
+    // Check that the check-out date is after the check-in date
+    if ($checkOut->lte($checkIn)) {
+        return $this->error('Check-out must be after check-in.', 422);
+    }
+
+    // Start transaction to handle potential issues with race conditions
+    try {
+        return DB::transaction(function () use ($request, $user, $checkIn, $checkOut) {
+            // Lock property row to prevent concurrent bookings
+            $property = Property::lockForUpdate()->find($request->property_id);
+
+            if (!$property) {
+                return $this->error('Property not found.', 404);
+            }
+
+            // Prevent owner from requesting their own property
+            if ($property->owner_id === $user->id) {
+                return $this->error('You cannot make a request for your own property.', 422);
+            }
+
+            // Enhanced property status check
+            if (!in_array($property->property_state, ['Valid', 'Available'])) {
+                return $this->error('Property is not available for rent.', 422);
+            }
+
+            // Check if property owner account is active
+            if ($property->owner->status !== 'active') {
+                return $this->error('Property owner account is not active.', 422);
+            }
+
+            // Check if the user is temporarily blocked from requesting this property
+            $blocked = RentRequest::where('property_id', $property->id)
+                ->where('user_id', $user->id)
+                ->whereNotNull('blocked_until')
+                ->where('blocked_until', '>', Carbon::now())
+                ->exists();
+
+            if ($blocked) {
+                return $this->error('You are temporarily blocked from requesting this property. Try later.', 403);
+            }
+
+            // Check for cooldown after a cancellation/rejection
+            $cooldown = RentRequest::where('property_id', $property->id)
+                ->where('user_id', $user->id)
+                ->whereNotNull('cooldown_expires_at')
+                ->where('cooldown_expires_at', '>', Carbon::now())
+                ->exists();
+
+            if ($cooldown) {
+                return $this->error('You are in cooldown for this property due to a previous cancellation. Try later.', 403);
+            }
+
+            // Calculate everything server-side from property data
+            $nights = $checkIn->diffInDays($checkOut);
+            $pricePerNight = $property->price_per_night; // Get current price from database
+            $totalPrice = $pricePerNight * $nights;
+
+            // Check for date overlap with proper locking
+            $overlap = RentRequest::where('property_id', $property->id)
+                ->whereIn('status', ['pending', 'confirmed', 'paid'])
+                ->lockForUpdate()
+                ->where(function ($q) use ($checkIn, $checkOut) {
+                    $q->where(function ($s) use ($checkIn, $checkOut) {
+                        $s->where('check_in', '<', $checkOut)
+                            ->where('check_out', '>', $checkIn);
+                    });
+                })
+                ->exists();
+
+            if ($overlap) {
+                return $this->error('Property already has an active request for the selected dates.', 422);
+            }
+
+            // Create the rent request with calculated values
+            $rentRequest = RentRequest::create([
+                'user_id' => $user->id,
+                'property_id' => $property->id,
+                'check_in' => $checkIn->toDateString(),
+                'check_out' => $checkOut->toDateString(),
+                'guests' => $property->default_guests ?? 2,
+                'total_price' => $totalPrice,
+                'nights' => $nights,
+                'price_per_night' => $pricePerNight,
+                'message' => null, // No message needed
+                'status' => 'pending',
+            ]);
+
+            // Log the action for audit trail
+            Log::info('Rent request created', [
+                'user_id' => $user->id,
+                'property_id' => $property->id,
+                'request_id' => $rentRequest->id,
+                'dates' => [$checkIn->toDateString(), $checkOut->toDateString()],
+                'nights' => $nights,
+                'total_price' => $totalPrice,
+            ]);
+
+            // FIXED: Safe notification with error handling
+            try {
+                Notification::send($property->owner, new \App\Notifications\RentRequested($rentRequest));
+            } catch (Exception $e) {
+                Log::warning('Failed to send rent request notification', [
+                    'error' => $e->getMessage(),
+                    'request_id' => $rentRequest->id
+                ]);
+                // Don't fail the entire request for notification issues
+            }
+
+            return $this->success('Rent request created successfully.', $rentRequest, 201);
+        });
+    } catch (Exception $e) {
+        // Log error and return failure response
+        Log::error('createRequest error: ' . $e->getMessage(), [
+            'trace' => $e->getTraceAsString(),
+            'user_id' => $user->id ?? null,
+            'property_id' => $request->property_id ?? null,
+        ]);
+        return $this->error('Failed to create request. Try again later.', 500);
+    }
+}
     /**
      * Cancel request by user
      */
