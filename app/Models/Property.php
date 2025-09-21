@@ -384,5 +384,18 @@ public function markAsInvalid(int $adminId, ?string $reason = null): bool
 {
     return $this->images->pluck('image_url');
 }
+public function purchases()
+{
+    return $this->hasMany(Purchase::class);
+}
 
+public function escrowBalances()
+{
+    return $this->hasManyThrough(EscrowBalance::class, RentRequest::class);
+}
+
+public function checkouts()
+{
+    return $this->hasManyThrough(Checkout::class, RentRequest::class);
+}
 }
