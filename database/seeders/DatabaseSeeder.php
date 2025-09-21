@@ -30,6 +30,8 @@ class DatabaseSeeder extends Seeder
             WishlistSeeder::class,
             AdminUserManagementSeeder::class,
             CSAgentPropertyAssignSeeder::class,
+            chatseeder::class,
+            rentRequestSeeder::class,
             // Add other seeders as needed
         // ... other seeders like ReviewSeeder
     ]);
