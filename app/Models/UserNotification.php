@@ -6,11 +6,11 @@ use App\Enums\NotificationPurpose;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Notification extends Model
+class UserNotification extends Model
 {
     use HasFactory;
 
-    protected $table = 'notifications';
+    protected $table = 'user_notifications';
 
     protected $fillable = [
         'user_id',      // recipient

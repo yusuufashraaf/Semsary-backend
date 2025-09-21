@@ -24,44 +24,60 @@ class CloudinaryService
     /**
      * Upload file to Cloudinary
      */
-    public function uploadFile($file, $folder = null, $options = [])
-    {
-        try {
-            $uploadOptions = [
-                'resource_type' => 'auto', // Automatically detect file type
-            ];
+   public function uploadFile($file, $folder = null, $options = [])
+{
+    try {
+        $uploadOptions = [
+            'resource_type' => 'auto', 
+        ];
 
-            // Add folder if specified
-            if ($folder) {
-                $uploadOptions['folder'] = $folder;
-            }
-
-            // Merge with custom options
-            $uploadOptions = array_merge($uploadOptions, $options);
-
-            // Upload the file
-            $result = $this->cloudinary->uploadApi()->upload(
-                $file->getRealPath(),
-                $uploadOptions
-            );
-
-            return [
-                'success' => true,
-                'public_id' => $result['public_id'],
-                'url' => $result['secure_url'],
-                'original_filename' => $result['original_filename'] ?? $file->getClientOriginalName(),
-                'format' => $result['format'],
-                'size' => $result['bytes'],
-                'width' => $result['width'] ?? null,
-                'height' => $result['height'] ?? null,
-            ];
-        } catch (Exception $e) {
-            return [
-                'success' => false,
-                'error' => $e->getMessage()
-            ];
+        // Add folder if specified
+        if ($folder) {
+            $uploadOptions['folder'] = $folder;
         }
+
+        // Merge with custom options
+        $uploadOptions = array_merge($uploadOptions, $options);
+
+        // Upload the file
+        $result = $this->cloudinary->uploadApi()->upload(
+            $file->getRealPath(),
+            $uploadOptions
+        );
+
+        // Detect resource type (image, raw, video)
+        $resourceType = $result['resource_type'] ?? 'image';
+
+        // Build URL manually if it's a raw file (documents)
+        if ($resourceType === 'raw') {
+            $url = "https://res.cloudinary.com/" . config('services.cloudinary.cloud_name')
+                 . "/raw/upload/" . $result['public_id'];
+                        if (!empty($result['format'])) {
+                $url .= "." . $result['format'];
+            }
+        } else {
+            $url = $result['secure_url'];
+        }
+
+        return [
+            'success' => true,
+            'public_id' => $result['public_id'],
+            'url' => $url,
+            'original_filename' => $result['original_filename'] ?? $file->getClientOriginalName(),
+            'format' => $result['format'] ?? pathinfo($file->getClientOriginalName(), PATHINFO_EXTENSION),
+            'size' => $result['bytes'] ?? null,
+            'width' => $result['width'] ?? null,
+            'height' => $result['height'] ?? null,
+            'resource_type' => $resourceType
+        ];
+    } catch (Exception $e) {
+        return [
+            'success' => false,
+            'error' => $e->getMessage()
+        ];
     }
+}
+
 
     /**
      * Delete file from Cloudinary

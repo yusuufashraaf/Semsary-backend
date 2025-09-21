@@ -3,9 +3,13 @@ use App\Http\Controllers\Api\FiltersController;
 use App\Http\Controllers\Api\PropertyListController;
 use App\Http\Controllers\Api\WishlistController;
 use App\Http\Controllers\FeatureController;
+use App\Http\Controllers\ChatbotController;
 use App\Http\Controllers\OwnerDashboardController;
 use App\Http\Controllers\PropertyDetailsController;
+use App\Http\Controllers\RentRequestController;
+use App\Http\Controllers\ReviewAnalysisController;
 use App\Http\Controllers\ReviewController;
+use App\Models\Review;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PropertyController;
@@ -22,6 +26,7 @@ use App\Http\Controllers\Admin\CSAgentPropertyAssignController;
 use App\Http\Controllers\Admin\CSAgentDashboardController;
 use App\Http\Controllers\Admin\PropertyAssignmentController;
 use App\Http\Controllers\Admin\CsAgentController;
+use App\Http\Controllers\Api\ProfileController;
 // CsAgent controller
 use App\Http\Controllers\CsAgent\PropertyController as CsAgentPropertyController;
 use App\Http\Controllers\CsAgent\PropertyVerificationController;
@@ -37,21 +42,21 @@ Route::get('/user', function (Request $request) {
 
 // Public routes
 Route::post('/register', [AuthenticationController::class, 'register']);
-Route::post('/login', [AuthenticationController::class, 'login']);
+Route::post('/login', [AuthenticationController::class, 'login'])->middleware('throttle:5,1');
 
 Route::post('/refresh', [AuthenticationController::class, 'refresh']);
 
 Route::post('/verify-email', [AuthenticationController::class, 'verifyEmailOtp']);
-Route::post('/resend-email-otp', [AuthenticationController::class, 'resendEmailOtp']);
+Route::post('/resend-email-otp', [AuthenticationController::class, 'resendEmailOtp'])->middleware('throttle:2,1');
 
 Route::post('/send-phone-otp', [AuthenticationController::class, 'sendPhoneOtp']);
-Route::post('/verify-phone-otp', [AuthenticationController::class, 'verifyPhoneOtp']);
+Route::post('/verify-phone-otp', [AuthenticationController::class, 'verifyPhoneOtp'])->middleware('throttle:2,1');
 
 Route::post('/upload-id', [ImageOfId::class, 'uploadIdImage']);
 
 
 Route::post('/forgot-password', [forgetPasswordController::class, 'forgetPassword']);
-Route::post('/reset-password', [resetPassVerification::class, 'resetPassword']);
+Route::post('/reset-password', [resetPassVerification::class, 'resetPassword'])->middleware('throttle:2,1');
 Route::post('/verify-reset-token', [resetPassVerification::class, 'verifyToken']);
 
 
@@ -81,8 +86,17 @@ Route::prefix('propertiesList')->group(function () {
 });
 // Protected routes
 Route::middleware('auth:api')->group(function () {
+
     Route::post('profile', [AuthenticationController::class, 'profile']);
+
     Route::post('/logout', [AuthenticationController::class, 'logout']);
+
+    Route::post('/user/change-email', [ProfileController::class, 'changeEmail']);
+
+    Route::post('/user/change-phone', [ProfileController::class, 'changePhoneNumber']);
+
+    Route::post('/user/change-password', [ProfileController::class, 'changePassword']);
+
 });
 
 Route::get('/features', [FeatureController::class, 'index']);
@@ -148,8 +162,8 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
     // SEM-65 CS Agent Management Routes
     Route::get('/cs-agents', [CsAgentController::class, 'index']);
 
-     // SEM-64: CS Agent Dashboard API Implementation
-     Route::prefix('cs-agents')->group(function () {
+    // SEM-64: CS Agent Dashboard API Implementation
+    Route::prefix('cs-agents')->group(function () {
         // Dashboard overview (must come before parameterized routes)
         Route::get('/dashboard', [CSAgentDashboardController::class, 'getDashboardData']);
         Route::get('/dashboard/charts/assignments', [CSAgentDashboardController::class, 'getAssignmentsChart']);
@@ -228,6 +242,7 @@ Route::prefix('user/{id}')->group(function ($id) {
     Route::get('/purchases', [UserController::class, 'purchases']);
     Route::get('/bookings', [UserController::class, 'bookings']);
     Route::get('/wishlists', [UserController::class, 'wishlists']);
+    Route::patch('/notifications/{notificationid}/read', [UserController::class, 'markAsRead']);
 });
 
 Route::middleware('auth:api')->group(function () {
@@ -235,4 +250,38 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/wishlist', [WishlistController::class, 'store']);
     Route::delete('/wishlist/{propertyId}', [WishlistController::class, 'destroy']);
 });
+
+
+Route::middleware('auth:api')->group(function () {
+    // Rent request creation
+    Route::post('/rent-requests', [RentRequestController::class, 'createRequest']);
+
+    // Cancel by user
+    Route::post('/rent-requests/{id}/cancel', [RentRequestController::class, 'cancelRequestByUser']);
+
+    // Owner actions
+    Route::post('/rent-requests/{id}/confirm', [RentRequestController::class, 'confirmRequestByOwner']);
+    Route::post('/rent-requests/{id}/reject', [RentRequestController::class, 'rejectRequestByOwner']);
+    Route::post('/rent-requests/{id}/cancel-by-owner', [RentRequestController::class, 'cancelConfirmedByOwner']);
+
+    // Payment
+    Route::post('/rent-requests/{id}/pay', [RentRequestController::class, 'payForRequest']);
+
+    // Listings
+    Route::get('/rent-requests/user', [RentRequestController::class, 'listUserRequests']);
+    Route::get('/rent-requests/owner', [RentRequestController::class, 'listOwnerRequests']);
+
+    // Additional endpoints
+    Route::get('/rent-requests/stats', [RentRequestController::class, 'getRequestStats']);
+    Route::get('/rent-requests/{id}', [RentRequestController::class, 'getRequestDetails']);
+});
+
+// System (cron job or scheduler) — protected via console command or internal token
+Route::post('/rent-requests/auto-cancel', [RentRequestController::class, 'autoCancelUnpaidRequests']);
+// AI Routes
+Route::post('/chatbot', [ChatbotController::class, 'handleChat']);
+Route::post('/properties/generate-description', [PropertyController::class, 'generateDescription']);
+//openrouterai
+Route::get('/properties/{property}/reviews/analysis', [ReviewAnalysisController::class, 'analyze']);
+
 
