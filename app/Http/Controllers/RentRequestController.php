@@ -679,48 +679,85 @@ public function createRequest(Request $request)
     /**
      * List all requests by user (paginated)
      */
-    public function listUserRequests(Request $request)
-    {
-        $user = $request->user();
-        $perPage = min((int) $request->input('per_page', 20), 100); // Max 100 per page
+public function listUserRequests(Request $request)
+{
+    $user = $request->user();
+    $perPage = min((int) $request->input('per_page', 20), 12);
 
-        $data = RentRequest::where('user_id', $user->id)
-            ->with([
-                'property' => function ($query) {
-                    $query->select('id', 'title', 'address', 'daily_rent', 'monthly_rent', 'owner_id');
-                }
-            ])
-            ->orderBy('created_at', 'desc')
-            ->paginate($perPage);
+    $data = RentRequest::where('user_id', $user->id)
+        ->with([
+            'property' => function ($query) {
+                $query->select('id', 'title', 'location', 'price', 'price_type', 'owner_id');
+            },
+            'property.owner' => function ($query) {
+                $query->select('id', 'first_name', 'last_name', 'phone_number');
+            }
+        ])
+        ->orderBy('created_at', 'desc')
+        ->paginate($perPage);
 
-        return $this->success('User requests retrieved.', $data);
-    }
+    // Transform results: only include owner info if request is paid
+    $data->getCollection()->transform(function ($request) {
+        if ($request->status === 'paid' && $request->property && $request->property->owner) {
+            $request->property->owner_info = [
+                'first_name'   => $request->property->owner->first_name,
+                'last_name'    => $request->property->owner->last_name,
+                'phone_number' => $request->property->owner->phone_number,
+            ];
+        } else {
+            $request->property->owner_info = null;
+        }
+        unset($request->property->owner); 
+        return $request;
+    });
+
+    return $this->success('User requests retrieved.', $data);
+}
 
     /**
      * List all requests for an owner (across their properties)
      */
-    public function listOwnerRequests(Request $request)
-    {
-        $owner = $request->user();
-        $perPage = min((int) $request->input('per_page', 20), 100); // Max 100 per page
+public function listOwnerRequests(Request $request)
+{
+    $owner = $request->user();
+    $perPage = min((int) $request->input('per_page', 20), 12); 
 
-        // Get owned property ids
-        $propertyIds = Property::where('owner_id', $owner->id)->pluck('id');
+    // Get owned property ids
+    $propertyIds = Property::where('owner_id', $owner->id)->pluck('id');
 
-        $data = RentRequest::whereIn('property_id', $propertyIds)
-            ->with([
-                'property' => function ($query) {
-                    $query->select('id', 'title', 'address', 'daily_rent', 'monthly_rent');
-                },
-                'user' => function ($query) {
-                    $query->select('id', 'name', 'email', 'phone');
-                }
-            ])
-            ->orderBy('created_at', 'desc')
-            ->paginate($perPage);
+    $data = RentRequest::whereIn('property_id', $propertyIds)
+        ->with([
+            'property' => function ($query) {
+                $query->select('id', 'title', 'location', 'price', 'price_type');
+            },
+            'user' => function ($query) {
+                $query->select('id', 'first_name', 'last_name', 'phone_number');
+            }
+        ])
+        ->orderBy('created_at', 'desc')
+        ->paginate($perPage);
 
-        return $this->success('Owner requests retrieved.', $data);
-    }
+    // Transform: only return user details if status is "paid"
+    $data->getCollection()->transform(function ($request) {
+        if ($request->status === 'paid' && $request->user) {
+            $request->user_info = [
+                'first_name'   => $request->user->first_name,
+                'last_name'    => $request->user->last_name,
+                'phone_number' => $request->user->phone_number,
+            ];
+        } else {
+            $request->user_info = [
+                'first_name' => $request->user->first_name ?? null,
+                'last_name'  => $request->user->last_name ?? null,
+                'phone_number' => null, // hide number unless paid
+            ];
+        }
+        unset($request->user); // don’t leak full relation
+        return $request;
+    });
+
+    return $this->success('Owner requests retrieved.', $data);
+}
 
     /**
      * System cron: cancel unpaid confirmed requests past payment_deadline
@@ -797,53 +834,66 @@ public function createRequest(Request $request)
     /**
      * Get single rent request details (for user or owner)
      */
-    public function getRequestDetails(Request $request, $id)
-    {
-        $user = $request->user();
+public function getRequestDetails(Request $request, $id)
+{
+    $user = $request->user();
 
-        try {
-            $rentRequest = RentRequest::with([
-                'property' => function ($query) {
-                    $query->select('id', 'title', 'address', 'daily_rent', 'monthly_rent', 'owner_id');
-                },
-                'user' => function ($query) {
-                    $query->select('id', 'name', 'email', 'phone');
-                },
-                'purchases' => function ($query) {
-                    $query->select('id', 'rent_request_id', 'amount', 'status', 'transaction_ref', 'created_at');
-                }
-            ])->findOrFail($id);
-
-            // Check if user has access to this request
-            $isOwner = $rentRequest->property->owner_id === $user->id;
-            $isRenter = $rentRequest->user_id === $user->id;
-
-            if (!$isOwner && !$isRenter) {
-                return $this->error('You do not have access to this request.', 403);
+    try {
+        $rentRequest = RentRequest::with([
+            'property' => function ($query) {
+                $query->select('id', 'title', 'location', 'price', 'price_type', 'owner_id');
+            },
+            'user' => function ($query) {
+                $query->select('id', 'first_name', 'last_name', 'email', 'phone_number');
+            },
+            // 'purchases' => function ($query) {
+            //     $query->select('id', 'rent_request_id', 'amount', 'status', 'transaction_ref', 'created_at');
+            // },
+            'property.owner' => function ($query) {
+                $query->select('id', 'first_name', 'last_name', 'phone_number');
             }
+        ])->findOrFail($id);
 
-            // Hide sensitive information based on role
-            if (!$isOwner) {
-                unset($rentRequest->user); // Hide user details from non-owners
+        // Check access
+        $isOwner  = $rentRequest->property->owner_id === $user->id;
+        $isRenter = $rentRequest->user_id === $user->id;
+
+        if (!$isOwner && !$isRenter) {
+            return $this->error('You do not have access to this request.', 403);
+        }
+
+        // If viewer is renter
+        if ($isRenter) {
+            // Only show owner details if status is paid
+            if ($rentRequest->status !== 'paid') {
+                unset($rentRequest->property->owner);
             }
+            // Always hide owner email, created_at, etc.
+            if ($rentRequest->property->owner) {
+                $rentRequest->property->owner->makeHidden(['email_verified_at', 'created_at', 'updated_at']);
+            }
+        }
 
-            if (!$isRenter) {
-                // Owners can see renter details but limit sensitive info
+        // If viewer is owner
+        if ($isOwner) {
+            // Owner sees renter but without sensitive system fields
+            if ($rentRequest->user) {
                 $rentRequest->user->makeHidden(['email_verified_at', 'created_at', 'updated_at']);
             }
-
-            return $this->success('Request details retrieved.', $rentRequest);
-
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return $this->error('Request not found.', 404);
-        } catch (Exception $e) {
-            Log::error('getRequestDetails error: ' . $e->getMessage(), [
-                'request_id' => $id,
-                'user_id' => $user->id,
-            ]);
-            return $this->error('Failed to retrieve request details.', 500);
         }
+
+        return $this->success('Request details retrieved.', $rentRequest);
+
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        return $this->error('Request not found.', 404);
+    } catch (Exception $e) {
+        Log::error('getRequestDetails error: ' . $e->getMessage(), [
+            'request_id' => $id,
+            'user_id'    => $user->id,
+        ]);
+        return $this->error('Failed to retrieve request details.', 500);
     }
+}
 
     /**
      * Get request statistics for dashboard
