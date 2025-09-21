@@ -31,6 +31,7 @@ use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\CsAgent\PropertyController as CsAgentPropertyController;
 use App\Http\Controllers\CsAgent\PropertyVerificationController;
 use App\Http\Controllers\CsAgent\PropertyDocumentController;
+use App\Http\Controllers\MessageController;
 
 
 Route::get('/user', function (Request $request) {
@@ -234,7 +235,21 @@ Route::prefix('cs-agent')->middleware(['auth:api', 'role:agent'])->group(functio
     });
 });
 
-Route::prefix('user/{id}')->group(function ($id) {
+
+Route::middleware('auth:api')->prefix('user')->group(function () {
+    
+    Route::get('/chats', [MessageController::class, 'getUserChats']);
+    
+    Route::get('/chats/{chat}/messages', [MessageController::class, 'getChatMessages']);
+    
+    Route::post('/chats/{chat}/messages', [MessageController::class, 'sendMessage']);
+    
+    Route::post('/chats/start', [MessageController::class, 'startChat']);
+    
+    Route::post('/chats/{chat}/read', [MessageController::class, 'markAsRead']);
+});
+
+Route::middleware('auth:api')->prefix('user/{id}')->group(function ($id) {
     Route::get('/', [UserController::class, 'index']);
     Route::get('/reviews', [UserController::class, 'reviews']);
     Route::get('/properties', [UserController::class, 'properties']);
@@ -244,6 +259,9 @@ Route::prefix('user/{id}')->group(function ($id) {
     Route::get('/wishlists', [UserController::class, 'wishlists']);
     Route::patch('/notifications/{notificationid}/read', [UserController::class, 'markAsRead']);
 });
+
+
+
 
 Route::middleware('auth:api')->group(function () {
     Route::get('/wishlist', [WishlistController::class, 'index']);
@@ -275,6 +293,17 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/rent-requests/stats', [RentRequestController::class, 'getRequestStats']);
     Route::get('/rent-requests/{id}', [RentRequestController::class, 'getRequestDetails']);
 });
+
+
+    
+
+    // Get all chats for authenticated user
+    Route::middleware('auth:sanctum')->group(function () {
+
+});
+
+
+
 
 // System (cron job or scheduler) — protected via console command or internal token
 Route::post('/rent-requests/auto-cancel', [RentRequestController::class, 'autoCancelUnpaidRequests']);
