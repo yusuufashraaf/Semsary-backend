@@ -12,6 +12,10 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
+use App\Models\Wallet;
+use App\Models\WalletTransaction;
+use App\Models\EscrowBalance;
+
 use Exception;
 
 class RentRequestController extends Controller
@@ -473,211 +477,336 @@ public function createRequest(Request $request)
         }
     }
 
-    /**
-     * User pays for a confirmed request
-     */
-    public function payForRequest(Request $request, $id)
-    {
-        $validator = \Validator::make($request->all(), [
-            'payment_method_token' => 'required|string',
-            'idempotency_key' => 'nullable|string',
-            'expected_total' => 'required|numeric|min:0',
-        ]);
+public function payForRequest(Request $request, $id)
+{
+    $validator = \Validator::make($request->all(), [
+        'payment_method_token' => 'nullable|string', // nullable because wallet might cover full amount
+        'idempotency_key'      => 'nullable|string',
+        'expected_total'       => 'required|numeric|min:0',
+    ]);
 
-        if ($validator->fails()) {
-            return $this->error('Validation failed.', 422, $validator->errors());
-        }
-
-        $user = $request->user();
-        if (!$user)
-            return $this->error('Authentication required.', 401);
-
-        if ($user->status !== 'active') {
-            return $this->error('Your account must be active to make payments.', 403);
-        }
-
-        $idempotencyKey = $request->input('idempotency_key') ?? Str::uuid()->toString();
-        $paymentToken = $request->input('payment_method_token');
-        $expectedTotal = $request->input('expected_total');
-
-        try {
-            return DB::transaction(function () use ($id, $user, $idempotencyKey, $paymentToken, $expectedTotal) {
-                // Lock rent_request
-                $rentRequest = RentRequest::lockForUpdate()->findOrFail($id);
-
-                // Basic status checks
-                if ($rentRequest->user_id !== $user->id) {
-                    return $this->error('This request does not belong to you.', 403);
-                }
-
-                if ($rentRequest->status !== 'confirmed') {
-                    return $this->error('Request must be confirmed by owner before payment.', 422);
-                }
-
-                if ($rentRequest->payment_deadline && Carbon::now()->gt($rentRequest->payment_deadline)) {
-                    return $this->error('Payment deadline expired. Please create a new request.', 422);
-                }
-
-                // FIXED: Idempotency check using single key
-                $existing = Purchase::where('rent_request_id', $rentRequest->id)
-                    ->where('idempotency_key', $idempotencyKey)
-                    ->where('status', 'successful')
-                    ->first();
-
-                if ($existing) {
-                    return $this->success('Payment already processed.', $existing);
-                }
-
-                // Check property availability AGAIN (double-check) and lock property row
-                $property = Property::lockForUpdate()->find($rentRequest->property_id);
-                if (!$property) {
-                    return $this->error('Property not found.', 404);
-                }
-
-                // FIXED: Prevent double-booking by other paid requests with proper locking
-                $conflict = RentRequest::where('property_id', $property->id)
-                    ->where('id', '!=', $rentRequest->id)
-                    ->where('status', 'paid')
-                    ->lockForUpdate()
-                    ->where(function ($q) use ($rentRequest) {
-                        $q->where('check_in', '<', $rentRequest->check_out)
-                            ->where('check_out', '>', $rentRequest->check_in);
-                    })
-                    ->exists();
-
-                if ($conflict) {
-                    return $this->error('Property has been booked by someone else for those dates.', 409);
-                }
-
-                // Compute amounts (business logic):
-                $days = Carbon::parse($rentRequest->check_in)->diffInDays(Carbon::parse($rentRequest->check_out));
-                if ($days <= 0)
-                    $days = 1;
-
-                // Decide daily vs monthly contract (business rule: if >=30 days treat as monthly)
-                $isMonthly = ($days >= 30);
-                if ($isMonthly) {
-                    $months = (int) ceil($days / 30);
-                    $rentAmount = ($property->monthly_rent ?: 0) * $months;
-                    $depositAmount = ($property->monthly_rent ?: 0) * 2;
-                } else {
-                    $rentAmount = ($property->daily_rent ?: 0) * $days;
-                    $depositAmount = ($property->daily_rent ?: 0);
-                }
-
-                $totalAmount = bcadd($rentAmount, $depositAmount, 2);
-
-                if ($totalAmount <= 0) {
-                    return $this->error('Invalid payment amount configured for this property.', 422);
-                }
-
-                if (abs($totalAmount - $expectedTotal) > 0.01) {
-                    return $this->error('Price has changed. Please refresh and try again.', 422);
-                }
-
-                // FIXED: Create single payment record with proper idempotency
-                $payment = Purchase::create([
-                    'rent_request_id' => $rentRequest->id,
-                    'user_id' => $user->id,
-                    'amount' => $totalAmount,
-                    'rent_amount' => $rentAmount,
-                    'deposit_amount' => $depositAmount,
-                    'payment_type' => 'full_payment',
-                    'status' => 'pending',
-                    'transaction_ref' => null,
-                    'idempotency_key' => $idempotencyKey,
-                ]);
-
-                // Call Payment Gateway
-                try {
-                    $gatewayResponse = app('App\\Services\\PaymentGateway')->charge([
-                        'amount' => $totalAmount,
-                        'currency' => config('payment.default_currency', 'USD'),
-                        'payment_token' => $paymentToken,
-                        'idempotency' => $idempotencyKey,
-                        'metadata' => [
-                            'rent_request_id' => $rentRequest->id,
-                            'user_id' => $user->id,
-                            'property_id' => $property->id,
-                        ],
-                    ]);
-                } catch (Exception $e) {
-                    $payment->status = 'failed';
-                    $payment->save();
-
-                    Log::error('Payment gateway exception', [
-                        'rent_request_id' => $rentRequest->id,
-                        'error' => $e->getMessage(),
-                        'payment_id' => $payment->id,
-                    ]);
-                    return $this->error('Payment provider error. Please try again later.', 502);
-                }
-
-                // Handle gateway response
-                if (empty($gatewayResponse) || empty($gatewayResponse['success'])) {
-                    $payment->status = 'failed';
-                    $payment->save();
-
-                    $errMsg = $gatewayResponse['message'] ?? 'Payment failed at gateway.';
-                    Log::warning('Payment gateway failure', [
-                        'rent_request_id' => $rentRequest->id,
-                        'error' => $errMsg,
-                        'payment_id' => $payment->id,
-                    ]);
-                    return $this->error($errMsg, 422);
-                }
-
-                // Payment succeeded
-                $transactionRef = $gatewayResponse['transaction_ref'] ?? ($gatewayResponse['id'] ?? Str::uuid());
-
-                $payment->status = 'successful';
-                $payment->transaction_ref = $transactionRef;
-                $payment->save();
-
-                // Mark rent_request paid
-                $rentRequest->status = 'paid';
-                $rentRequest->save();
-
-                // Log successful payment
-                Log::info('Payment processed successfully', [
-                    'rent_request_id' => $rentRequest->id,
-                    'user_id' => $user->id,
-                    'payment_id' => $payment->id,
-                    'amount' => $totalAmount,
-                    'transaction_ref' => $transactionRef,
-                ]);
-
-                // FIXED: Safe notifications with error handling
-                try {
-                    Notification::send($rentRequest->property->owner, new \App\Notifications\PaymentSuccessful($rentRequest));
-                    Notification::send($user, new \App\Notifications\PaymentSuccessful($rentRequest));
-                } catch (Exception $e) {
-                    Log::warning('Failed to send payment success notifications', [
-                        'error' => $e->getMessage(),
-                        'request_id' => $rentRequest->id
-                    ]);
-                }
-
-                return $this->success('Payment successful. Booking confirmed.', [
-                    'rent_request' => $rentRequest,
-                    'payment' => $payment,
-                    'transaction_ref' => $transactionRef,
-                ], 200);
-            });
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return $this->error('Request not found.', 404);
-        } catch (Exception $e) {
-            Log::error('payForRequest error: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString(),
-                'request_id' => $id,
-                'user_id' => $user->id ?? null,
-            ]);
-            return $this->error('Payment processing failed. Please try again later.', 500);
-        }
+    if ($validator->fails()) {
+        return $this->error('Validation failed.', 422, $validator->errors());
     }
 
-    /**
-     * List all requests by user (paginated)
+    $user = $request->user();
+    if (!$user) {
+        return $this->error('Authentication required.', 401);
+    }
+
+    if ($user->status !== 'active') {
+        return $this->error('Your account must be active to make payments.', 403);
+    }
+
+    $idempotencyKey = $request->input('idempotency_key') ?? Str::uuid()->toString();
+    $paymentToken   = $request->input('payment_method_token');
+    $expectedTotal  = $request->input('expected_total');
+
+    try {
+        return DB::transaction(function () use ($id, $user, $idempotencyKey, $paymentToken, $expectedTotal) {
+            // Lock rent_request
+            $rentRequest = RentRequest::lockForUpdate()->find($id);
+            if (!$rentRequest) {
+                return $this->error('Rent request not found.', 404);
+            }
+            
+            if ($rentRequest->user_id !== $user->id) {
+                return $this->error('This request does not belong to you.', 403);
+            }
+            
+            if ($rentRequest->status !== 'confirmed') {
+                return $this->error('Request must be confirmed before payment.', 422);
+            }
+
+            // Check payment deadline
+            if ($rentRequest->payment_deadline && Carbon::now()->gt($rentRequest->payment_deadline)) {
+                return $this->error('Payment deadline expired. Please create a new request.', 422);
+            }
+
+            // Idempotency check
+            $existingPurchase = Purchase::where('rent_request_id', $rentRequest->id)
+                ->where('idempotency_key', $idempotencyKey)
+                ->where('status', 'successful')
+                ->first();
+
+            if ($existingPurchase) {
+                return $this->success('Payment already processed.', $existingPurchase);
+            }
+
+            // Lock property and prevent double booking
+            $property = Property::lockForUpdate()->find($rentRequest->property_id);
+            if (!$property) {
+                return $this->error('Property not found.', 404);
+            }
+
+            $conflict = RentRequest::where('property_id', $property->id)
+                ->where('id', '!=', $rentRequest->id)
+                ->where('status', 'paid')
+                ->lockForUpdate()
+                ->where(function ($q) use ($rentRequest) {
+                    $q->where('check_in', '<', $rentRequest->check_out)
+                      ->where('check_out', '>', $rentRequest->check_in);
+                })
+                ->exists();
+
+            if ($conflict) {
+                return $this->error('Property has already been booked for these dates.', 409);
+            }
+
+            // CALCULATE PRICING ON-THE-FLY (since table doesn't have pricing columns)
+            $checkIn = Carbon::parse($rentRequest->check_in);
+            $checkOut = Carbon::parse($rentRequest->check_out);
+            $days = $checkIn->diffInDays($checkOut);
+            if ($days <= 0) $days = 1;
+
+            // Get property pricing - try multiple fields
+            $pricePerNight = null;
+            if (!empty($property->price_per_night) && $property->price_per_night > 0) {
+                $pricePerNight = $property->price_per_night;
+            } elseif (!empty($property->price) && $property->price > 0) {
+                $pricePerNight = $property->price;
+            } elseif (!empty($property->daily_rent) && $property->daily_rent > 0) {
+                $pricePerNight = $property->daily_rent;
+            } else {
+                Log::error('Property has no valid pricing data', [
+                    'property_id' => $property->id,
+                    'price_per_night' => $property->price_per_night ?? 'null',
+                    'price' => $property->price ?? 'null',
+                    'daily_rent' => $property->daily_rent ?? 'null',
+                ]);
+                return $this->error('Property pricing is not configured. Please contact support.', 422);
+            }
+
+            // Calculate rent amount
+            $rentAmount = $pricePerNight * $days;
+            
+            // Calculate deposit (simple approach - 1 night's rent)
+            $depositAmount = $pricePerNight;
+
+            $totalAmount = bcadd($rentAmount, $depositAmount, 2);
+
+            // Debug logging
+            Log::info('Payment calculation (on-the-fly)', [
+                'rent_request_id' => $rentRequest->id,
+                'property_id' => $property->id,
+                'days' => $days,
+                'price_per_night' => $pricePerNight,
+                'rent_amount' => $rentAmount,
+                'deposit_amount' => $depositAmount,
+                'total_amount' => $totalAmount,
+                'expected_total_from_client' => $expectedTotal,
+            ]);
+
+            if ($totalAmount <= 0) {
+                return $this->error('Invalid payment calculation. Please contact support.', 422);
+            }
+
+            // Verify the expected total matches (with some tolerance for floating point)
+            if (abs($totalAmount - $expectedTotal) > 0.01) {
+                return $this->error(
+                    'Price mismatch. Expected: $' . number_format($totalAmount, 2) . 
+                    ', Received: $' . number_format($expectedTotal, 2) . 
+                    '. Please refresh and try again.', 
+                    422
+                );
+            }
+
+            // WALLET FIRST LOGIC - exactly as in your implementation
+            $wallet = Wallet::lockForUpdate()->firstOrCreate(['user_id' => $user->id], ['balance' => 0]);
+            $walletBalance = $wallet->balance;
+            $usedFromWallet = 0;
+            $remainingToCharge = $totalAmount;
+
+            if ($walletBalance > 0) {
+                if ($walletBalance >= $totalAmount) {
+                    // Wallet covers everything
+                    $usedFromWallet = $totalAmount;
+                    $remainingToCharge = 0;
+
+                    $wallet->balance = bcsub($wallet->balance, $totalAmount, 2);
+                    $wallet->save();
+
+                    WalletTransaction::create([
+                        'wallet_id' => $wallet->id,
+                        'amount'    => -$totalAmount,
+                        'type'      => 'payment',
+                        'ref_id'    => $rentRequest->id,
+                        'ref_type'  => 'rent_request',
+                        'description' => 'Payment for rental booking (full wallet)',
+                        'balance_before' => $walletBalance,
+                        'balance_after' => $wallet->balance,
+                    ]);
+                } else {
+                    // Partial wallet + gateway
+                    $usedFromWallet = $walletBalance;
+                    $remainingToCharge = bcsub($totalAmount, $walletBalance, 2);
+
+                    $wallet->balance = 0;
+                    $wallet->save();
+
+                    WalletTransaction::create([
+                        'wallet_id' => $wallet->id,
+                        'amount'    => -$usedFromWallet,
+                        'type'      => 'payment',
+                        'ref_id'    => $rentRequest->id,
+                        'ref_type'  => 'rent_request',
+                        'description' => 'Partial payment for rental booking (wallet portion)',
+                        'balance_before' => $walletBalance,
+                        'balance_after' => $wallet->balance,
+                    ]);
+                }
+            }
+
+            // Gateway charge if needed
+            $transactionRef = Str::uuid()->toString();
+            $gatewayUsed = null;
+
+            if ($remainingToCharge > 0) {
+                if (!$paymentToken) {
+                    return $this->error('Payment method is required for remaining balance.', 422);
+                }
+
+                try {
+                    $gatewayResponse = app('App\\Services\\PaymentGateway')->charge([
+                        'amount'        => $remainingToCharge,
+                        'currency'      => config('payment.default_currency', 'EGP'),
+                        'payment_token' => $paymentToken,
+                        'idempotency'   => $idempotencyKey,
+                        'metadata'      => [
+                            'rent_request_id' => $rentRequest->id,
+                            'user_id'         => $user->id,
+                            'property_id'     => $property->id,
+                        ],
+                    ]);
+
+                    if (empty($gatewayResponse) || empty($gatewayResponse['success'])) {
+                        // Rollback wallet deduction if gateway fails
+                        if ($usedFromWallet > 0) {
+                            $wallet->balance = bcadd($wallet->balance, $usedFromWallet, 2);
+                            $wallet->save();
+                        }
+                        
+                        $errMsg = $gatewayResponse['message'] ?? 'Payment failed at gateway.';
+                        return $this->error($errMsg, 422);
+                    }
+
+                    $transactionRef = $gatewayResponse['transaction_ref'] ?? ($gatewayResponse['id'] ?? $transactionRef);
+                    $gatewayUsed = $gatewayResponse['gateway'] ?? 'Unknown';
+
+                } catch (Exception $e) {
+                    // Rollback wallet deduction if gateway fails
+                    if ($usedFromWallet > 0) {
+                        $wallet->balance = bcadd($wallet->balance, $usedFromWallet, 2);
+                        $wallet->save();
+                    }
+                    
+                    return $this->error('Payment provider error: ' . $e->getMessage(), 502);
+                }
+            }
+
+            // Create purchase records (split rent & deposit)
+            $depositPurchase = Purchase::create([
+                'rent_request_id' => $rentRequest->id,
+                'user_id'         => $user->id,
+                'property_id'     => $property->id,
+                'amount'          => $depositAmount,
+                'payment_type'    => 'deposit',
+                'status'          => 'successful',
+                'payment_gateway' => $remainingToCharge > 0 ? $gatewayUsed : 'Wallet',
+                'transaction_ref' => $transactionRef,
+                'idempotency_key' => $idempotencyKey,
+                'metadata' => [
+                    'wallet_used' => min($usedFromWallet, $depositAmount),
+                    'gateway_charged' => max(0, bcsub($depositAmount, min($usedFromWallet, $depositAmount), 2)),
+                    'total_amount' => $totalAmount,
+                    'calculated_on_payment' => true, // Flag to indicate this was calculated at payment time
+                    'days' => $days,
+                    'price_per_night' => $pricePerNight,
+                ],
+            ]);
+
+            $rentPurchase = Purchase::create([
+                'rent_request_id' => $rentRequest->id,
+                'user_id'         => $user->id,
+                'property_id'     => $property->id,
+                'amount'          => $rentAmount,
+                'payment_type'    => 'rent',
+                'status'          => 'successful',
+                'payment_gateway' => $remainingToCharge > 0 ? $gatewayUsed : 'Wallet',
+                'transaction_ref' => $transactionRef,
+                'idempotency_key' => $idempotencyKey,
+                'metadata' => [
+                    'wallet_used' => max(0, bcsub($usedFromWallet, $depositAmount, 2)),
+                    'gateway_charged' => $remainingToCharge > 0 ? $remainingToCharge - max(0, bcsub($usedFromWallet, $depositAmount, 2)) : 0,
+                    'total_amount' => $totalAmount,
+                    'calculated_on_payment' => true,
+                    'days' => $days,
+                    'price_per_night' => $pricePerNight,
+                ],
+            ]);
+
+            // Create escrow balance for checkout system
+            EscrowBalance::create([
+                'rent_request_id' => $rentRequest->id,
+                'user_id'         => $user->id,
+                'rent_amount'     => $rentAmount,
+                'deposit_amount'  => $depositAmount,
+                'total_amount'    => $totalAmount,
+                'status'          => 'locked',
+                'locked_at'       => Carbon::now(),
+            ]);
+
+            // Update rent request status
+            $rentRequest->status = 'paid';
+            $rentRequest->save();
+
+            // Send notifications
+            try {
+                Notification::send($rentRequest->property->owner, new \App\Notifications\PaymentSuccessful($rentRequest));
+                Notification::send($user, new \App\Notifications\PaymentSuccessful($rentRequest));
+            } catch (Exception $e) {
+                Log::warning('Failed to send payment success notifications', [
+                    'error' => $e->getMessage(),
+                    'rent_request_id' => $rentRequest->id
+                ]);
+            }
+
+            Log::info('Payment successful', [
+                'rent_request_id' => $rentRequest->id,
+                'user_id' => $user->id,
+                'total_amount' => $totalAmount,
+                'wallet_contribution' => $usedFromWallet,
+                'gateway_charged' => $remainingToCharge,
+                'transaction_ref' => $transactionRef,
+            ]);
+
+            return $this->success('Payment successful. Booking confirmed.', [
+                'rent_request'     => $rentRequest->fresh(),
+                'deposit_purchase' => $depositPurchase,
+                'rent_purchase'    => $rentPurchase,
+                'escrow_balance'   => EscrowBalance::where('rent_request_id', $rentRequest->id)->first(),
+                'transaction_ref'  => $transactionRef,
+                'used_from_wallet' => $usedFromWallet,
+                'charged_gateway'  => $remainingToCharge,
+                'calculation_details' => [
+                    'days' => $days,
+                    'price_per_night' => $pricePerNight,
+                    'rent_amount' => $rentAmount,
+                    'deposit_amount' => $depositAmount,
+                ],
+            ], 200);
+        });
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        return $this->error('Request not found.', 404);
+    } catch (Exception $e) {
+        Log::error('payForRequest error: ' . $e->getMessage(), [
+            'trace'      => $e->getTraceAsString(),
+            'request_id' => $id,
+            'user_id'    => $user->id ?? null,
+        ]);
+        return $this->error('Payment processing failed. Please try again later.', 500);
+    }
+}/** List all requests by user (paginated)
      */
 public function listUserRequests(Request $request)
 {
