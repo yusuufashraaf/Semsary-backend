@@ -12,14 +12,17 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
+            // Email OTP fields
+            $table->string('email_otp')->nullable()->after('email_verified_at');
+            $table->timestamp('email_otp_expires_at')->nullable()->after('email_otp');
+            $table->timestamp('email_otp_sent_at')->nullable()->after('email_otp_expires_at');
 
-        $table->string('email_otp')->nullable()->after('email_verified_at');
-        $table->timestamp('email_otp_expires_at')->nullable()->after('email_otp');
+            // WhatsApp OTP fields
+            $table->string('whatsapp_otp')->nullable()->after('phone_verified_at');
+            $table->timestamp('whatsapp_otp_expires_at')->nullable()->after('whatsapp_otp');
 
-        $table->string('whatsapp_otp')->nullable()->after('phone_verified_at');
-        $table->timestamp('whatsapp_otp_expires_at')->nullable()->after('whatsapp_otp');
-
-        $table->string('id_image_url')->nullable()->after('password');
+            // Extra user info
+            $table->string('id_image_url')->nullable()->after('password');
         });
     }
 
@@ -29,11 +32,13 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            // Drop columns in the reverse order they were added.
             $table->dropColumn([
-            'whatsapp_otp',
-            'whatsapp_otp_expires_at',
-            'id_image_url'
+                'email_otp',
+                'email_otp_expires_at',
+                'email_otp_sent_at',
+                'whatsapp_otp',
+                'whatsapp_otp_expires_at',
+                'id_image_url',
             ]);
         });
     }

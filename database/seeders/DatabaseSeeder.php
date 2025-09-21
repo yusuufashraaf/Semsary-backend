@@ -23,11 +23,13 @@ class DatabaseSeeder extends Seeder
             ReviewSeeder::class,
             BathroomSeeder::class,
             BedroomsSeeder::class,
-            notificationSeeder::class,
+            userNotificationSeeder::class,
             propertyFeatureSeeder::class,
             propertyImageSeeder::class,
             purchaseSeeder::class,
+            WishlistSeeder::class,
             AdminUserManagementSeeder::class,
+            CSAgentPropertyAssignSeeder::class,
             // Add other seeders as needed
         // ... other seeders like ReviewSeeder
     ]);
