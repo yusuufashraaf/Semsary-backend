@@ -59,6 +59,35 @@ class PropertyDetailResource extends JsonResource
                 return new UserDetailResource($this->owner);
             }),
 
+            // Assigned CS Agent details
+            'assigned_agent' => $this->when($this->relationLoaded('activeAssignment') && $this->activeAssignment, function () {
+                return [
+                    'id' => $this->activeAssignment->csAgent->id,
+                    'name' => $this->activeAssignment->csAgent->first_name . ' ' . $this->activeAssignment->csAgent->last_name,
+                    'email' => $this->activeAssignment->csAgent->email,
+                    'assignment_id' => $this->activeAssignment->id,
+                    'assignment_status' => $this->activeAssignment->status,
+                    'assigned_at' => $this->activeAssignment->assigned_at->format('M d, Y H:i'),
+                    'assigned_by' => $this->activeAssignment->assignedBy ?
+                        $this->activeAssignment->assignedBy->first_name . ' ' . $this->activeAssignment->assignedBy->last_name : null,
+                ];
+            }, function () {
+                // Check if there's a current assignment (not necessarily active)
+                if ($this->relationLoaded('currentAssignment') && $this->currentAssignment) {
+                    return [
+                        'id' => $this->currentAssignment->csAgent->id,
+                        'name' => $this->currentAssignment->csAgent->first_name . ' ' . $this->currentAssignment->csAgent->last_name,
+                        'email' => $this->currentAssignment->csAgent->email,
+                        'assignment_id' => $this->currentAssignment->id,
+                        'assignment_status' => $this->currentAssignment->status,
+                        'assigned_at' => $this->currentAssignment->assigned_at->format('M d, Y H:i'),
+                        'assigned_by' => $this->currentAssignment->assignedBy ?
+                            $this->currentAssignment->assignedBy->first_name . ' ' . $this->currentAssignment->assignedBy->last_name : null,
+                    ];
+                }
+                return null;
+            }),
+
             // Images and media
             'images' => $this->when($this->relationLoaded('images'), function () {
                 return $this->images->map(function ($image) {
