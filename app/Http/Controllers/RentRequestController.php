@@ -72,7 +72,7 @@ Log::info('Inserting notification', [
     'purpose'   => $purpose->value,
 ]);
             // Create UserNotification record
-            UserNotification::create([
+            $notification=UserNotification::create([
                 'user_id' => $recipient->id,
                 'sender_id' => $senderId,
                 'entity_id' => $entityId,
