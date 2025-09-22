@@ -134,7 +134,7 @@ class PropertyManagementService
                       ->limit(10);
             },
             'bookings' => function ($query) {
-                $query->with('user:id,first_name,last_name')
+                $query->with('customer:id,first_name,last_name')
                       ->orderBy('created_at', 'desc')
                       ->limit(10);
             },

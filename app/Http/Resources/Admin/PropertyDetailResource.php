@@ -109,9 +109,9 @@ class PropertyDetailResource extends JsonResource
                         'guest_count' => $booking->guest_count ?? 1,
                         'total_amount' => (float) ($booking->total_amount ?? 0),
                         'user' => [
-                            'id' => $booking->user->id ?? null,
-                            'name' => trim(($booking->user->first_name ?? '') . ' ' . ($booking->user->last_name ?? '')),
-                            'email' => $booking->user->email ?? null,
+                            'id' => $booking->customer->id ?? null,
+                            'name' => trim(($booking->customer->first_name ?? '') . ' ' . ($booking->customer->last_name ?? '')),
+                            'email' => $booking->customer->email ?? null,
                         ],
                         'created_at' => $booking->created_at->format('M d, Y H:i'),
                     ];
