@@ -36,6 +36,7 @@ use App\Http\Controllers\MessageController;
 
 use App\Http\Controllers\Api\CheckoutController;
 use App\Http\Controllers\UserNotificationController;
+use App\Http\Controllers\UserBalanceController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -346,3 +347,6 @@ Route::middleware(['auth:api', 'role:admin'])->group(function () {
 
 // User Notification
 Route::middleware('auth:api')->get('/notifications', [UserNotificationController::class, 'getUserNotifications']);
+
+// User Balance
+Route::middleware('auth:api')->get('/balances', [UserBalanceController::class, 'getBalances']);
