@@ -99,9 +99,13 @@ Route::prefix('propertiesList')->group(function () {
 // Protected routes
 
 // Property Purchase routes
-Route::middleware('auth:api')->group(function () {
+
+Route::middleware(['auth:api', 'purchase.limit'])->group(function () {
     Route::post('/properties/{id}/purchase', [PropertyPurchaseController::class, 'payForOwn']);
-    Route::post('/purchases/{id}/cancel', [PropertyPurchaseController::class, 'cancelPurchase']);
+        Route::post('/purchases/{id}/cancel', [PropertyPurchaseController::class, 'cancelPurchase']);
+});
+
+Route::middleware('auth:api')->group(function () {
     Route::get('/purchases/cancellable', [PropertyPurchaseController::class, 'getUserCancellablePurchases']);
     Route::get('/purchases', [PropertyPurchaseController::class, 'getAllPurchases']);
     Route::get('/user/transactions', [PropertyPurchaseController::class, 'getAllUserTransactions']);
