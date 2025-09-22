@@ -27,8 +27,20 @@ class PropertyManagementService
      */
     public function getFilteredProperties(array $filters): LengthAwarePaginator
     {
-        $query = Property::with(['owner', 'images', 'features', 'reviews', 'bookings'])
-            ->withCount(['bookings', 'reviews']);
+        $query = Property::with([
+            'owner',
+            'images',
+            'features',
+            'reviews',
+            'bookings',
+            'activeAssignment' => function ($query) {
+                $query->with('csAgent:id,first_name,last_name,email');
+            },
+            'currentAssignment' => function ($query) {
+                $query->with('csAgent:id,first_name,last_name,email');
+            }
+        ])
+        ->withCount(['bookings', 'reviews']);
 
         // Apply filters
         if (!empty($filters['status'])) {
@@ -134,13 +146,25 @@ class PropertyManagementService
                       ->limit(10);
             },
             'bookings' => function ($query) {
-                $query->with('user:id,first_name,last_name')
+                $query->with('customer:id,first_name,last_name')
                       ->orderBy('created_at', 'desc')
                       ->limit(10);
             },
             'transactions' => function ($query) {
                 $query->orderBy('created_at', 'desc')
                       ->limit(5);
+            },
+            'activeAssignment' => function ($query) {
+                $query->with([
+                    'csAgent:id,first_name,last_name,email',
+                    'assignedBy:id,first_name,last_name'
+                ]);
+            },
+            'currentAssignment' => function ($query) {
+                $query->with([
+                    'csAgent:id,first_name,last_name,email',
+                    'assignedBy:id,first_name,last_name'
+                ]);
             }
         ])
         ->withCount(['bookings', 'reviews'])
