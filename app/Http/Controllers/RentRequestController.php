@@ -6,6 +6,8 @@ use App\Events\RequestAutoCancelledEvent;
 use App\Models\Purchase;
 use App\Models\RentRequest;
 use App\Models\Property;
+use App\Models\UserNotification;
+use App\Enums\NotificationPurpose;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -41,6 +43,53 @@ class RentRequestController extends Controller
         }
 
         return response()->json($payload, $status);
+    }
+
+    /**
+     * Helper to create UserNotification from websocket notification data
+     */
+    private function createUserNotificationFromWebsocketData(
+        $recipient,
+        $notificationClass,
+        NotificationPurpose $purpose,
+        $senderId = null
+    ) {
+        try {
+            // Get notification data (same as websocket)
+            $notificationData = null;
+            if (method_exists($notificationClass, 'toDatabase')) {
+                $notificationData = $notificationClass->toDatabase($recipient);
+            } elseif (method_exists($notificationClass, 'toBroadcast')) {
+                $broadcastData = $notificationClass->toBroadcast($recipient);
+                $notificationData = $broadcastData->data ?? $broadcastData;
+            }
+
+            // Extract data same as websocket structure
+            $entityId = $notificationData['rent_request_id'] ?? $notificationData['id'] ?? $notificationData['property_id'] ?? null;
+            $message = $notificationData['message'] ?? 'New notification';
+Log::info('Inserting notification', [
+    'recipient' => $recipient->id,
+    'purpose'   => $purpose->value,
+]);
+            // Create UserNotification record
+            $notification=UserNotification::create([
+                'user_id' => $recipient->id,
+                'sender_id' => $senderId,
+                'entity_id' => $entityId,
+                'purpose' => $purpose,
+                'title' => $purpose->label(),
+                'message' => $message,
+                'is_read' => false,
+            ]);
+Log::info('Notification row created', [
+    'id' => optional($notification)->id
+]);
+        } catch (Exception $e) {
+            Log::warning('Failed to create UserNotification', [
+                'error' => $e->getMessage(),
+                'recipient_id' => $recipient->id,
+            ]);
+        }
     }
 
     /**
@@ -186,7 +235,16 @@ public function createRequest(Request $request)
 
             // FIXED: Safe notification with error handling
             try {
-                Notification::send($property->owner, new \App\Notifications\RentRequested($rentRequest));
+                $notification = new \App\Notifications\RentRequested($rentRequest);
+                Notification::send($property->owner, $notification);
+                
+                // Create UserNotification from websocket data
+                $this->createUserNotificationFromWebsocketData(
+                    $property->owner,
+                    $notification,
+                    NotificationPurpose::RENT_REQUESTED,
+                    $user->id
+                );
             } catch (Exception $e) {
                 Log::warning('Failed to send rent request notification', [
                     'error' => $e->getMessage(),
@@ -249,7 +307,16 @@ public function createRequest(Request $request)
 
             // FIXED: Safe notification with error handling
             try {
-                Notification::send($rentRequest->property->owner, new \App\Notifications\UserRejectsRequest($rentRequest));
+                $notification = new \App\Notifications\UserRejectsRequest($rentRequest);
+                Notification::send($rentRequest->property->owner, $notification);
+                
+                // Create UserNotification from websocket data
+                $this->createUserNotificationFromWebsocketData(
+                    $rentRequest->property->owner,
+                    $notification,
+                    NotificationPurpose::USER_REJECTS_REQUEST,
+                    $user->id
+                );
             } catch (Exception $e) {
                 Log::warning('Failed to send cancellation notification', [
                     'error' => $e->getMessage(),
@@ -333,7 +400,16 @@ public function createRequest(Request $request)
 
                 // FIXED: Safe notification with error handling
                 try {
-                    Notification::send($rentRequest->user, new \App\Notifications\RentRequestAccepted($rentRequest));
+                    $notification = new \App\Notifications\RentRequestAccepted($rentRequest);
+                    Notification::send($rentRequest->user, $notification);
+                    
+                    // Create UserNotification from websocket data
+                    $this->createUserNotificationFromWebsocketData(
+                        $rentRequest->user,
+                        $notification,
+                        NotificationPurpose::RENT_REQUEST_ACCEPTED,
+                        $owner->id
+                    );
                 } catch (Exception $e) {
                     Log::warning('Failed to send confirmation notification', [
                         'error' => $e->getMessage(),
@@ -391,7 +467,16 @@ public function createRequest(Request $request)
 
                 // FIXED: Safe notification with error handling
                 try {
-                    Notification::send($rentRequest->user, new \App\Notifications\UserRejectsRequest($rentRequest));
+                    $notification = new \App\Notifications\OwnerRejectsRequest($rentRequest);
+                    Notification::send($rentRequest->user, $notification);
+                    
+                    // Create UserNotification from websocket data
+                    $this->createUserNotificationFromWebsocketData(
+                        $rentRequest->user,
+                        $notification,
+                        NotificationPurpose::OWNER_REJECTS_REQUEST,
+                        $owner->id
+                    );
                 } catch (Exception $e) {
                     Log::warning('Failed to send rejection notification', [
                         'error' => $e->getMessage(),
@@ -456,7 +541,16 @@ public function createRequest(Request $request)
 
                 // FIXED: Safe notification with error handling
                 try {
-                    Notification::send($rentRequest->user, new \App\Notifications\OwnerRejectsRequest($rentRequest));
+                    $notification = new \App\Notifications\OwnerRejectsRequest($rentRequest);
+                    Notification::send($rentRequest->user, $notification);
+                    
+                    // Create UserNotification from websocket data
+                    $this->createUserNotificationFromWebsocketData(
+                        $rentRequest->user,
+                        $notification,
+                        NotificationPurpose::OWNER_REJECTS_REQUEST,
+                        $owner->id
+                    );
                 } catch (Exception $e) {
                     Log::warning('Failed to send owner cancellation notification', [
                         'error' => $e->getMessage(),
@@ -767,8 +861,27 @@ public function payForRequest(Request $request, $id)
 
             // Send notifications
             try {
-                Notification::send($rentRequest->property->owner, new \App\Notifications\PaymentSuccessful($rentRequest));
-                Notification::send($user, new \App\Notifications\PaymentSuccessful($rentRequest));
+                $ownerNotification = new \App\Notifications\PaymentSuccessful($rentRequest);
+                Notification::send($rentRequest->property->owner, $ownerNotification);
+                
+                // Create UserNotification from websocket data for owner
+                $this->createUserNotificationFromWebsocketData(
+                    $rentRequest->property->owner,
+                    $ownerNotification,
+                    NotificationPurpose::PAYMENT_SUCCESSFUL,
+                    $user->id
+                );
+
+                $userNotification = new \App\Notifications\PaymentSuccessful($rentRequest);
+                Notification::send($user, $userNotification);
+                
+                // Create UserNotification from websocket data for user
+                $this->createUserNotificationFromWebsocketData(
+                    $user,
+                    $userNotification,
+                    NotificationPurpose::PAYMENT_SUCCESSFUL,
+                    null
+                );
             } catch (Exception $e) {
                 Log::warning('Failed to send payment success notifications', [
                     'error' => $e->getMessage(),
@@ -811,7 +924,9 @@ public function payForRequest(Request $request, $id)
         ]);
         return $this->error('Payment processing failed. Please try again later.', 500);
     }
-}/** List all requests by user (paginated)
+}
+
+/** List all requests by user (paginated)
      */
 public function listUserRequests(Request $request)
 {
@@ -886,7 +1001,7 @@ public function listOwnerRequests(Request $request)
                 'phone_number' => null, // hide number unless paid
             ];
         }
-        unset($request->user); // don’t leak full relation
+        unset($request->user); // don't leak full relation
         return $request;
     });
 
@@ -933,8 +1048,27 @@ public function listOwnerRequests(Request $request)
 
                         // Safe notifications
                         try {
-                            Notification::send($rentRequest->user, new \App\Notifications\RequestAutoCancelled($rentRequest));
-                            Notification::send($rentRequest->property->owner, new \App\Notifications\RequestAutoCancelledBySystem($rentRequest));
+                            $userNotification = new \App\Notifications\RequestAutoCancelled($rentRequest);
+                            Notification::send($rentRequest->user, $userNotification);
+                            
+                            // Create UserNotification from websocket data for user
+                            $this->createUserNotificationFromWebsocketData(
+                                $rentRequest->user,
+                                $userNotification,
+                                NotificationPurpose::REQUEST_AUTO_CANCELLED,
+                                null
+                            );
+
+                            $ownerNotification = new \App\Notifications\RequestAutoCancelledBySystem($rentRequest);
+                            Notification::send($rentRequest->property->owner, $ownerNotification);
+                            
+                            // Create UserNotification from websocket data for owner
+                            $this->createUserNotificationFromWebsocketData(
+                                $rentRequest->property->owner,
+                                $ownerNotification,
+                                NotificationPurpose::REQUEST_AUTO_CANCELLED_BY_SYSTEM,
+                                null
+                            );
                         } catch (Exception $e) {
                             Log::warning('Failed to send auto-cancellation notifications', [
                                 'error' => $e->getMessage(),

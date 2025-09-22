@@ -13,8 +13,12 @@ return [
     */
 
     'dashboard' => [
-        'cache_ttl' => env('ADMIN_DASHBOARD_CACHE_TTL', 300), // 5 minutes
-        'stats_refresh_interval' => env('ADMIN_STATS_REFRESH_INTERVAL', 300),
+        'cache_ttl' => env('ADMIN_DASHBOARD_CACHE_TTL', 60), // 1 minute (reduced from 5 minutes)
+        'stats_cache_ttl' => env('ADMIN_STATS_CACHE_TTL', 60), // 1 minute for dashboard stats
+        'chart_cache_ttl' => env('ADMIN_CHART_CACHE_TTL', 120), // 2 minutes for chart data
+        'property_stats_cache_ttl' => env('ADMIN_PROPERTY_STATS_CACHE_TTL', 60), // 1 minute for property statistics
+        'filters_cache_ttl' => env('ADMIN_FILTERS_CACHE_TTL', 1800), // 30 minutes for filters (less frequent changes)
+        'stats_refresh_interval' => env('ADMIN_STATS_REFRESH_INTERVAL', 60),
         'chart_data_limit' => env('ADMIN_CHART_DATA_LIMIT', 12), // months
     ],
 
