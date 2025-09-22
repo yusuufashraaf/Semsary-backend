@@ -46,6 +46,10 @@ class Kernel extends ConsoleKernel
         $schedule->command('system:health-check')
             ->everyFifteenMinutes()
             ->withoutOverlapping();
+
+                // Release property escrows automatically
+    $schedule->command('escrow:release')->everyMinute();
+
     }
 
     /**
@@ -57,4 +61,5 @@ class Kernel extends ConsoleKernel
 
         require base_path('routes/console.php');
     }
+    
 }
