@@ -39,13 +39,60 @@ class RentRequest extends Model
         return $this->belongsTo(Property::class);
     }
 
-    public function payments()
-    {
-        return $this->hasMany(Purchase::class);
-    }
+   public function checkout()
+{
+    return $this->hasOne(Checkout::class);
+}
 
-    public function checkout()
-    {
-        return $this->hasOne(Checkout::class);
-    }
+public function escrowBalance()
+{
+    return $this->hasOne(EscrowBalance::class);
+}
+
+public function purchases()
+{
+    return $this->hasMany(Purchase::class);
+}
+
+public function rentPurchases()
+{
+    return $this->hasMany(Purchase::class)->where('payment_type', 'rent');
+}
+
+public function depositPurchases()
+{
+    return $this->hasMany(Purchase::class)->where('payment_type', 'deposit');
+}
+
+public function refundPurchases()
+{
+    return $this->hasMany(Purchase::class)->where('payment_type', 'refund');
+}
+
+public function payoutPurchases()
+{
+    return $this->hasMany(Purchase::class)->where('payment_type', 'payout');
+}
+
+// Helper methods for RentRequest model
+public function hasEscrow()
+{
+    return $this->escrowBalance && $this->escrowBalance->isLocked();
+}
+
+public function canCheckout()
+{
+    return $this->status === 'paid' && !$this->checkout;
+}
+
+public function getTotalPaid()
+{
+    return $this->purchases()->successful()->sum('amount');
+}
+
+public function hasCheckout()
+{
+    return $this->checkout !== null;
+}
+
 }

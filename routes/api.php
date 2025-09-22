@@ -13,6 +13,7 @@ use App\Models\Review;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PropertyController;
+
 use App\Http\Controllers\Api\AuthenticationController;
 use App\Http\Controllers\Api\ImageOfId;
 use App\Http\Controllers\Api\forgetPasswordController;
@@ -31,7 +32,11 @@ use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\CsAgent\PropertyController as CsAgentPropertyController;
 use App\Http\Controllers\CsAgent\PropertyVerificationController;
 use App\Http\Controllers\CsAgent\PropertyDocumentController;
+use App\Http\Controllers\MessageController;
 
+use App\Http\Controllers\Api\CheckoutController;
+use App\Http\Controllers\UserNotificationController;
+use App\Http\Controllers\UserBalanceController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -234,7 +239,21 @@ Route::prefix('cs-agent')->middleware(['auth:api', 'role:agent'])->group(functio
     });
 });
 
-Route::prefix('user/{id}')->group(function ($id) {
+
+Route::middleware('auth:api')->prefix('user')->group(function () {
+    
+    Route::get('/chats', [MessageController::class, 'getUserChats']);
+    
+    Route::get('/chats/{chat}/messages', [MessageController::class, 'getChatMessages']);
+    
+    Route::post('/chats/{chat}/messages', [MessageController::class, 'sendMessage']);
+    
+    Route::post('/chats/start', [MessageController::class, 'startChat']);
+    
+    Route::post('/chats/{chat}/read', [MessageController::class, 'markAsRead']);
+});
+
+Route::middleware('auth:api')->prefix('user/{id}')->group(function ($id) {
     Route::get('/', [UserController::class, 'index']);
     Route::get('/reviews', [UserController::class, 'reviews']);
     Route::get('/properties', [UserController::class, 'properties']);
@@ -244,6 +263,9 @@ Route::prefix('user/{id}')->group(function ($id) {
     Route::get('/wishlists', [UserController::class, 'wishlists']);
     Route::patch('/notifications/{notificationid}/read', [UserController::class, 'markAsRead']);
 });
+
+
+
 
 Route::middleware('auth:api')->group(function () {
     Route::get('/wishlist', [WishlistController::class, 'index']);
@@ -276,6 +298,17 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/rent-requests/{id}', [RentRequestController::class, 'getRequestDetails']);
 });
 
+
+    
+
+    // Get all chats for authenticated user
+    Route::middleware('auth:sanctum')->group(function () {
+
+});
+
+
+
+
 // System (cron job or scheduler) — protected via console command or internal token
 Route::post('/rent-requests/auto-cancel', [RentRequestController::class, 'autoCancelUnpaidRequests']);
 // AI Routes
@@ -284,4 +317,36 @@ Route::post('/properties/generate-description', [PropertyController::class, 'gen
 //openrouterai
 Route::get('/properties/{property}/reviews/analysis', [ReviewAnalysisController::class, 'analyze']);
 
+// Checkout routes
+Route::middleware('auth:api')->group(function () {
+    // === User Actions ===
+    Route::post('/checkout/{rentRequestId}', [CheckoutController::class, 'processCheckout']);
+    Route::get('/checkout/{rentRequestId}', [CheckoutController::class, 'getCheckoutStatus']); 
+    
+    // === Owner Actions ===
+    Route::post('/checkout/{checkoutId}/owner/confirm', [CheckoutController::class, 'handleOwnerConfirm']);
+    Route::post('/checkout/{checkoutId}/owner/reject', [CheckoutController::class, 'handleOwnerReject']);
 
+    // === Agent Actions ===
+    Route::post('/checkout/{checkoutId}/agent-decision', [CheckoutController::class, 'handleAgentDecision']);
+
+    // === Query Checkouts ===
+    Route::get('/checkouts/stats', [CheckoutController::class, 'getCheckoutStats']);
+    Route::get('/checkouts/{checkoutId}', [CheckoutController::class, 'getCheckoutDetails']);
+    Route::get('/checkouts/user', [CheckoutController::class, 'listUserCheckouts']);
+    Route::get('/checkouts/admin', [CheckoutController::class, 'listAdminCheckouts']);
+
+    // === Transactions ===
+    Route::get('/transactions', [CheckoutController::class, 'listTransactions']);
+});
+
+// === System Cron (Admin only) ===
+Route::middleware(['auth:api', 'role:admin'])->group(function () {
+    Route::post('/system/auto-confirm-checkouts', [CheckoutController::class, 'autoConfirmExpiredCheckouts']);
+});
+
+// User Notification
+Route::middleware('auth:api')->get('/notifications', [UserNotificationController::class, 'getUserNotifications']);
+
+// User Balance
+Route::middleware('auth:api')->get('/balances', [UserBalanceController::class, 'getBalances']);

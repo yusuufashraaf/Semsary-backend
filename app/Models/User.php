@@ -9,10 +9,12 @@ use Illuminate\Notifications\DatabaseNotification;
 use Laravel\Passport\HasApiTokens;
 use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable implements JWTSubject
 {
     use Notifiable, HasApiTokens, HasFactory;
+    use HasRoles;
 
     protected $fillable = [
         'first_name',
@@ -324,4 +326,56 @@ class User extends Authenticatable implements JWTSubject
 
         return round($totalHours / $completedAssignments->count(), 2);
     }
+    
+public function wallet()
+{
+    return $this->hasOne(Wallet::class);
+}
+
+public function walletTransactions()
+{
+    return $this->hasManyThrough(WalletTransaction::class, Wallet::class);
+}
+
+
+
+public function escrowBalances()
+{
+    return $this->hasMany(EscrowBalance::class);
+}
+
+public function checkoutsRequested()
+{
+    return $this->hasMany(Checkout::class, 'requester_id');
+}
+
+public function checkoutsAsRenter()
+{
+    return $this->hasManyThrough(Checkout::class, RentRequest::class, 'user_id', 'rent_request_id');
+}
+
+public function checkoutsAsOwner()
+{
+    return $this->hasManyThrough(
+        Checkout::class, 
+        RentRequest::class, 
+        'property_id', 
+        'rent_request_id',
+        'id',
+        'id'
+    )->whereHas('rentRequest.property', function($query) {
+        $query->where('owner_id', $this->id);
+    });
+}
+
+// Helper methods for User model
+public function getWalletBalance()
+{
+    return $this->wallet ? $this->wallet->balance : 0;
+}
+
+public function hasWalletBalance($amount = 0)
+{
+    return $this->getWalletBalance() >= $amount;
+}
 }
