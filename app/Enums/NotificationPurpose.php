@@ -43,6 +43,14 @@ enum NotificationPurpose: string
     case EMAIL_OTP = 'email_otp';
     case PASSWORD_RESET = 'password_reset';
 
+    // Property purchase lifecycle
+    case PROPERTY_PURCHASE_REQUESTED = 'property_purchase_requested';
+    case PURCHASE_INITIATED          = 'purchase_initiated';
+    case PURCHASE_COMPLETED          = 'purchase_completed';
+    case PURCHASE_CANCELLED          = 'purchase_cancelled';
+    case PURCHASE_FAILED             = 'purchase_failed';
+
+
     /**
      * Get a human-readable label for the purpose
      */
@@ -74,6 +82,12 @@ enum NotificationPurpose: string
             self::CHECKOUT_REFUND_PROCESSED => 'Checkout Refund Processed',
             self::EMAIL_OTP => 'Email OTP',
             self::PASSWORD_RESET => 'Password Reset',
+            self::PROPERTY_PURCHASE_REQUESTED => 'Property Purchase Requested',
+            self::PURCHASE_INITIATED          => 'Purchase Initiated',
+            self::PURCHASE_COMPLETED          => 'Purchase Completed',
+            self::PURCHASE_CANCELLED          => 'Purchase Cancelled',
+            self::PURCHASE_FAILED             => 'Purchase Failed',
+
         };
     }
 

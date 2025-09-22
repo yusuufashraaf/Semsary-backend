@@ -64,6 +64,28 @@ class PropertyManagementResource extends JsonResource
                 ];
             }),
 
+            // CS Agent Assignment information
+            'assignment' => [
+                'is_assigned' => $this->isAssigned(),
+                'status' => $this->getAssignmentStatus(),
+                'agent' => $this->when($this->isAssigned(), function () {
+                    $assignment = $this->getCurrentAssignment();
+                    return $assignment ? [
+                        'id' => $assignment->csAgent->id,
+                        'name' => trim($assignment->csAgent->first_name . ' ' . $assignment->csAgent->last_name),
+                        'email' => $assignment->csAgent->email,
+                    ] : null;
+                }),
+                'assignment_id' => $this->when($this->isAssigned(), function () {
+                    $assignment = $this->getCurrentAssignment();
+                    return $assignment ? $assignment->id : null;
+                }),
+                'assigned_at' => $this->when($this->isAssigned(), function () {
+                    $assignment = $this->getCurrentAssignment();
+                    return $assignment ? $assignment->assigned_at->format('M d, Y H:i') : null;
+                }),
+            ],
+
             // Media
             'images' => [
                 'count' => $this->whenLoaded('images', function () {
@@ -207,5 +229,37 @@ class PropertyManagementResource extends JsonResource
         }
 
         return $issues;
+    }
+
+    /**
+     * Check if property is assigned to a CS agent
+     */
+    private function isAssigned(): bool
+    {
+        return $this->activeAssignment || $this->currentAssignment;
+    }
+
+    /**
+     * Get assignment status
+     */
+    private function getAssignmentStatus(): ?string
+    {
+        if ($this->activeAssignment) {
+            return $this->activeAssignment->status;
+        }
+
+        if ($this->currentAssignment) {
+            return $this->currentAssignment->status;
+        }
+
+        return null;
+    }
+
+    /**
+     * Get current assignment (active or latest)
+     */
+    private function getCurrentAssignment()
+    {
+        return $this->activeAssignment ?? $this->currentAssignment;
     }
 }

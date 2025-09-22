@@ -41,6 +41,9 @@ use App\Http\Controllers\UserBalanceController;
 // Withdraw
 use App\Http\Controllers\WithdrawalController;
 
+// Buy Property
+use App\Http\Controllers\PropertyPurchaseController;
+
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -94,6 +97,16 @@ Route::prefix('propertiesList')->group(function () {
     Route::get('/{id}', [PropertyController::class, 'showAnyone']);
 });
 // Protected routes
+
+// Property Purchase routes
+Route::middleware('auth:api')->group(function () {
+    Route::post('/properties/{id}/purchase', [PropertyPurchaseController::class, 'payForOwn']);
+    Route::post('/purchases/{id}/cancel', [PropertyPurchaseController::class, 'cancelPurchase']);
+    Route::get('/purchases/cancellable', [PropertyPurchaseController::class, 'getUserCancellablePurchases']);
+    Route::get('/purchases', [PropertyPurchaseController::class, 'getAllPurchases']);
+    Route::get('/user/transactions', [PropertyPurchaseController::class, 'getAllUserTransactions']);
+});
+
 Route::middleware('auth:api')->group(function () {
 
     Route::post('profile', [AuthenticationController::class, 'profile']);
