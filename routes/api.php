@@ -27,6 +27,7 @@ use App\Http\Controllers\Admin\CSAgentPropertyAssignController;
 use App\Http\Controllers\Admin\CSAgentDashboardController;
 use App\Http\Controllers\Admin\PropertyAssignmentController;
 use App\Http\Controllers\Admin\CsAgentController;
+use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProfileController;
 // CsAgent controller
 use App\Http\Controllers\CsAgent\PropertyController as CsAgentPropertyController;
@@ -96,6 +97,8 @@ Route::prefix('propertiesList')->group(function () {
     Route::get('/{id}', [PropertyListController::class, 'show']);
     Route::get('/{id}', [PropertyController::class, 'showAnyone']);
 });
+
+
 // Protected routes
 
 // Property Purchase routes
@@ -111,6 +114,11 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/user/transactions', [PropertyPurchaseController::class, 'getAllUserTransactions']);
 });
 
+
+  // payment
+Route::get('/exchange-payment-token', [PaymentController::class, 'exchangePaymentToken']);
+Route::match(['GET','POST'],'/payment/callback', [PaymentController::class, 'callBack']);
+
 Route::middleware('auth:api')->group(function () {
 
     Route::post('profile', [AuthenticationController::class, 'profile']);
@@ -122,6 +130,8 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/user/change-phone', [ProfileController::class, 'changePhoneNumber']);
 
     Route::post('/user/change-password', [ProfileController::class, 'changePassword']);
+
+    Route::post('/payment/process', [PaymentController::class, 'paymentProcess']);
 
 });
 
