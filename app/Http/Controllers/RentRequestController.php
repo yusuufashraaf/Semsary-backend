@@ -854,6 +854,11 @@ public function payForRequest(Request $request, $id)
             $rentRequest->status = 'paid';
             $rentRequest->save();
 
+            // Schedule rent release 24h after check-in
+            $releaseAt = Carbon::parse($rentRequest->check_in)->addHours(24);
+
+            \App\Jobs\ReleaseRentJob::dispatch($rentRequest->id)->delay($releaseAt);
+
             // Send notifications
             try {
                 $ownerNotification = new \App\Notifications\PaymentSuccessful($rentRequest);

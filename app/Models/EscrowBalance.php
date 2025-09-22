@@ -19,6 +19,8 @@ class EscrowBalance extends Model
         'status',
         'locked_at',
         'released_at',
+        'rent_released',
+        'rent_released_at',
     ];
 
     protected $casts = [
@@ -27,6 +29,8 @@ class EscrowBalance extends Model
         'total_amount' => 'decimal:2',
         'locked_at' => 'datetime',
         'released_at' => 'datetime',
+        'rent_released' => 'boolean',
+        'rent_released_at' => 'datetime',
     ];
 
     // Relationships
