@@ -8,27 +8,23 @@ use Illuminate\Support\Facades\DB;
 return new class extends Migration {
     public function up(): void
     {
+        // get all indexes on purchases
         $indexes = DB::select("SHOW INDEX FROM purchases");
         $indexNames = collect($indexes)->pluck('Key_name')->toArray();
 
         Schema::table('purchases', function (Blueprint $table) use ($indexNames) {
-            // Drop old transaction indexes if exist
-            if (in_array('purchases_transaction_id_unique', $indexNames)) {
-                $table->dropUnique('purchases_transaction_id_unique');
-            }
-            if (in_array('purchases_transaction_id_index', $indexNames)) {
-                $table->dropIndex('purchases_transaction_id_index');
-            }
-
-            // Drop unique if still exists on idempotency_key
+            // drop unique index if it exists
             if (in_array('purchases_idempotency_key_unique', $indexNames)) {
                 $table->dropUnique('purchases_idempotency_key_unique');
             }
 
-            // Ensure it's just a normal index
-            if (!in_array('purchases_idempotency_key_index', $indexNames)) {
-                $table->index('idempotency_key', 'purchases_idempotency_key_index');
+            // drop normal index if it exists
+            if (in_array('purchases_idempotency_key_index', $indexNames)) {
+                $table->dropIndex('purchases_idempotency_key_index');
             }
+
+            // now add the correct normal index
+            $table->index('idempotency_key', 'purchases_idempotency_key_index');
         });
     }
 
@@ -38,18 +34,12 @@ return new class extends Migration {
         $indexNames = collect($indexes)->pluck('Key_name')->toArray();
 
         Schema::table('purchases', function (Blueprint $table) use ($indexNames) {
-            // Re-add transaction_ref unique + index
-            if (!in_array('purchases_transaction_id_unique', $indexNames)) {
-                $table->unique('transaction_ref', 'purchases_transaction_id_unique');
-            }
-            if (!in_array('purchases_transaction_id_index', $indexNames)) {
-                $table->index('transaction_ref', 'purchases_transaction_id_index');
-            }
-
-            // Optional: revert idempotency_key back to unique
+            // drop normal index if it exists
             if (in_array('purchases_idempotency_key_index', $indexNames)) {
                 $table->dropIndex('purchases_idempotency_key_index');
             }
+
+            // restore unique index
             if (!in_array('purchases_idempotency_key_unique', $indexNames)) {
                 $table->unique('idempotency_key', 'purchases_idempotency_key_unique');
             }

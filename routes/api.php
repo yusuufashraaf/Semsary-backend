@@ -35,6 +35,7 @@ use App\Http\Controllers\CsAgent\PropertyDocumentController;
 use App\Http\Controllers\MessageController;
 
 use App\Http\Controllers\Api\CheckoutController;
+use App\Http\Controllers\UserNotificationController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -342,3 +343,6 @@ Route::middleware('auth:api')->group(function () {
 Route::middleware(['auth:api', 'role:admin'])->group(function () {
     Route::post('/system/auto-confirm-checkouts', [CheckoutController::class, 'autoConfirmExpiredCheckouts']);
 });
+
+// User Notification
+Route::middleware('auth:api')->get('/notifications', [UserNotificationController::class, 'getUserNotifications']);

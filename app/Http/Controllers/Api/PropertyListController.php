@@ -95,6 +95,8 @@ class PropertyListController extends Controller
                 'sqft' => $property->size,
                 'price' => (float) $property->price,
                 'status' => strtolower($property->property_state),
+                                'price_type' => $property->price_type
+
             ];
         });
 
