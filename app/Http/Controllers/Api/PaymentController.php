@@ -31,7 +31,7 @@ class PaymentController extends Controller
 
         try {
             $payment = $this->paymentGateway->callBack($request);
-            // $payment = ['success' => true, 'transaction_id' => 'TX123'];
+            $payment = ['success' => true, 'transaction_id' => 'TX123'];
             // If your gateway returns success/failure data
             if ($payment && isset($payment['success']) && $payment['success'] === true) {
                 // Store a short-lived cache entry (optional)

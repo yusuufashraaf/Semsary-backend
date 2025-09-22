@@ -85,11 +85,11 @@ Route::prefix('propertiesList')->group(function () {
     Route::get('/{id}', [PropertyListController::class, 'show']);
     Route::get('/{id}', [PropertyController::class, 'showAnyone']);
 });
-Route::post('/payment/process', [PaymentController::class, 'paymentProcess']);
-Route::match(['GET','POST'],'/payment/callback', [PaymentController::class, 'callBack']);
-Route::get('/exchange-payment-token', [PaymentController::class, 'exchangePaymentToken']);
+
 
 // Protected routes
+Route::get('/exchange-payment-token', [PaymentController::class, 'exchangePaymentToken']);
+Route::match(['GET','POST'],'/payment/callback', [PaymentController::class, 'callBack']);
 Route::middleware('auth:api')->group(function () {
 
     Route::post('profile', [AuthenticationController::class, 'profile']);
@@ -102,7 +102,7 @@ Route::middleware('auth:api')->group(function () {
 
     Route::post('/user/change-password', [ProfileController::class, 'changePassword']);
 
-
+    Route::post('/payment/process', [PaymentController::class, 'paymentProcess']);
 
 });
 
