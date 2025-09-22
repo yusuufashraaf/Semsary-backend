@@ -257,6 +257,8 @@ Route::middleware('auth:api')->prefix('user')->group(function () {
     Route::post('/chats/{chat}/read', [MessageController::class, 'markAsRead']);
 });
 
+Route::get('user/reviewable-properties', [ReviewController::class, 'getReviewableProperties']);
+
 Route::middleware('auth:api')->prefix('user/{id}')->group(function ($id) {
     Route::get('/', [UserController::class, 'index']);
     Route::get('/reviews', [UserController::class, 'reviews']);
@@ -266,6 +268,18 @@ Route::middleware('auth:api')->prefix('user/{id}')->group(function ($id) {
     Route::get('/bookings', [UserController::class, 'bookings']);
     Route::get('/wishlists', [UserController::class, 'wishlists']);
     Route::patch('/notifications/{notificationid}/read', [UserController::class, 'markAsRead']);
+});
+
+
+
+Route::middleware('auth:api')->group(function () {
+    Route::post('/reviews', [ReviewController::class, 'store']);
+    Route::put('/reviews/{review}', [ReviewController::class, 'update']);
+    Route::delete('/reviews/{review}', [ReviewController::class, 'destroy']);
+    Route::get('/properties/{property}/reviews', [ReviewController::class, 'getPropertyReviews']);
+    Route::get('/user/reviewable-properties', [ReviewController::class, 'getReviewableProperties']);
+    Route::get('/users/{user}/reviews', [ReviewController::class, 'getUserReviews']);
+    
 });
 
 
