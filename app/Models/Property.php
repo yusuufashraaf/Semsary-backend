@@ -384,5 +384,38 @@ public function markAsInvalid(int $adminId, ?string $reason = null): bool
 {
     return $this->images->pluck('image_url');
 }
+public function purchases()
+{
+    return $this->hasMany(Purchase::class);
+}
+
+public function escrowBalances()
+{
+    return $this->hasManyThrough(EscrowBalance::class, RentRequest::class);
+}
+
+public function checkouts()
+{
+    return $this->hasManyThrough(Checkout::class, RentRequest::class);
+}
+public function pendingBuyer(): BelongsTo
+{
+    return $this->belongsTo(User::class, 'pending_buyer_id');
+}
+
+public function propertyPurchases(): HasMany
+{
+    return $this->hasMany(PropertyPurchase::class);
+}
+
+public function activePurchase(): HasOne
+{
+    return $this->hasOne(PropertyPurchase::class)->whereIn('status', ['paid', 'pending']);
+}
+
+public function isUnderPurchase(): bool
+{
+    return $this->status === 'pending_transfer' && $this->pending_buyer_id !== null;
+}
 
 }

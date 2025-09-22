@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\Property;
 use App\Models\Review;
-use App\Models\Notification;
+//use App\Models\Notification;
 use App\Models\Purchase;
 use App\Models\Booking;
 use App\Models\Wishlist;

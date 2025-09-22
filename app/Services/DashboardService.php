@@ -13,7 +13,7 @@ class DashboardService
 {
     public function getKPIStats(): array
     {
-        return Cache::remember('admin_dashboard_stats', 300, function () {
+        return Cache::remember('admin_dashboard_stats', config('admin.dashboard.stats_cache_ttl', 60), function () {
             return [
                 'totalUsers' => User::count(),
                 'totalProperties' => Property::count(),
@@ -41,7 +41,7 @@ class DashboardService
 
     public function getRevenueChartData(): array
     {
-        return Cache::remember('revenue_chart_data', 300, function () {
+        return Cache::remember('revenue_chart_data', config('admin.dashboard.chart_cache_ttl', 120), function () {
             return Transaction::where('status', 'success')
                 ->where('created_at', '>=', Carbon::now()->subMonths(12))
                 ->select(
@@ -58,7 +58,7 @@ class DashboardService
 
     public function getUsersChartData(): array
     {
-        return Cache::remember('users_chart_data', 300, function () {
+        return Cache::remember('users_chart_data', config('admin.dashboard.chart_cache_ttl', 120), function () {
             return User::where('created_at', '>=', Carbon::now()->subMonths(12))
                 ->select(
                     DB::raw('DATE_FORMAT(created_at, "%Y-%m") as month'),
@@ -74,7 +74,7 @@ class DashboardService
 
     public function getPropertiesChartData(): array
     {
-        return Cache::remember('properties_chart_data', 300, function () {
+        return Cache::remember('properties_chart_data', config('admin.dashboard.chart_cache_ttl', 120), function () {
             return Property::where('created_at', '>=', Carbon::now()->subMonths(12))
                 ->select(
                     DB::raw('DATE_FORMAT(created_at, "%Y-%m") as month'),

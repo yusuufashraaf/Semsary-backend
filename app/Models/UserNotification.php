@@ -14,7 +14,7 @@ class UserNotification extends Model
 
     protected $fillable = [
         'user_id',      // recipient
-        'sender_id',    // who triggered the notification
+        'sender_id',    // who triggered the notification (CORRECT - matches DB)
         'entity_id',    // related entity (property, booking, etc.)
         'purpose',      // enum NotificationPurpose
         'title',
@@ -40,7 +40,7 @@ class UserNotification extends Model
      */
     public function sender()
     {
-        return $this->belongsTo(User::class, 'sender_id');
+        return $this->belongsTo(User::class, 'sender_id');  // CORRECT - matches DB
     }
 
     /**

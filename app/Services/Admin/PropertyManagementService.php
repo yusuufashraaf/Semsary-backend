@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
+use Illuminate\Support\Str;
 
 /**
  * SEM-62: Property Management Service
@@ -26,8 +27,20 @@ class PropertyManagementService
      */
     public function getFilteredProperties(array $filters): LengthAwarePaginator
     {
-        $query = Property::with(['owner', 'images', 'features', 'reviews', 'bookings'])
-            ->withCount(['bookings', 'reviews']);
+        $query = Property::with([
+            'owner',
+            'images',
+            'features',
+            'reviews',
+            'bookings',
+            'activeAssignment' => function ($query) {
+                $query->with('csAgent:id,first_name,last_name,email');
+            },
+            'currentAssignment' => function ($query) {
+                $query->with('csAgent:id,first_name,last_name,email');
+            }
+        ])
+        ->withCount(['bookings', 'reviews']);
 
         // Apply filters
         if (!empty($filters['status'])) {
@@ -133,13 +146,25 @@ class PropertyManagementService
                       ->limit(10);
             },
             'bookings' => function ($query) {
-                $query->with('user:id,first_name,last_name')
+                $query->with('customer:id,first_name,last_name')
                       ->orderBy('created_at', 'desc')
                       ->limit(10);
             },
             'transactions' => function ($query) {
                 $query->orderBy('created_at', 'desc')
                       ->limit(5);
+            },
+            'activeAssignment' => function ($query) {
+                $query->with([
+                    'csAgent:id,first_name,last_name,email',
+                    'assignedBy:id,first_name,last_name'
+                ]);
+            },
+            'currentAssignment' => function ($query) {
+                $query->with([
+                    'csAgent:id,first_name,last_name,email',
+                    'assignedBy:id,first_name,last_name'
+                ]);
             }
         ])
         ->withCount(['bookings', 'reviews'])
@@ -229,7 +254,7 @@ class PropertyManagementService
      */
     public function getPropertyStatistics(): array
     {
-        return Cache::remember('admin_property_statistics', 300, function () {
+        return Cache::remember('admin_property_statistics', config('admin.dashboard.property_stats_cache_ttl', 60), function () {
             return [
                 'total_properties' => Property::count(),
                 'by_status' => Property::select('property_state', DB::raw('count(*) as count'))
@@ -444,19 +469,23 @@ class PropertyManagementService
             $message .= " Reason: {$reason}";
         }
 
-        Notification::create([
-            'user_id' => $property->owner_id,
-            'title' => 'Property Status Update',
-            'message' => $message,
-            'type' => 'property_status',
+        DB::table('notifications')->insert([
+            'id' => Str::uuid(),
+            'type' => 'property_status_update',
+            'notifiable_type' => 'User',
+            'notifiable_id' => $property->owner_id,
             'data' => json_encode([
+                'title' => 'Property Status Update',
+                'message' => $message,
                 'property_id' => $property->id,
                 'property_title' => $property->title,
                 'old_status' => $oldStatus,
                 'new_status' => $newStatus,
                 'reason' => $reason,
                 'updated_by_admin' => auth()->id()
-            ])
+            ]),
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
     }
 
@@ -472,17 +501,21 @@ class PropertyManagementService
             return;
         }
 
-        Notification::create([
-            'user_id' => $property->owner_id,
-            'title' => 'Property Deleted',
-            'message' => "Your property '{$property->title}' has been removed from the platform by an administrator.",
+        DB::table('notifications')->insert([
+            'id' => Str::uuid(),
             'type' => 'property_deletion',
+            'notifiable_type' => 'User',
+            'notifiable_id' => $property->owner_id,
             'data' => json_encode([
+                'title' => 'Property Deleted',
+                'message' => "Your property '{$property->title}' has been removed from the platform by an administrator.",
                 'property_id' => $property->id,
                 'property_title' => $property->title,
                 'deleted_by_admin' => auth()->id(),
                 'deleted_at' => now()
-            ])
+            ]),
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
     }
 }
