@@ -9,6 +9,8 @@ use App\Models\EscrowBalance;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Models\Property;
+use App\Models\UserNotification;
+use App\Enums\NotificationPurpose;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -39,6 +41,56 @@ class CheckoutController extends Controller
         }
 
         return response()->json($payload, $status);
+    }
+
+    /**
+     * Helper to create UserNotification from websocket notification data
+     */
+    private function createUserNotificationFromWebsocketData(
+        $recipient,
+        $notificationClass,
+        NotificationPurpose $purpose,
+        $senderId = null
+    ) {
+        try {
+            // Get notification data (same as websocket)
+            $notificationData = null;
+            if (method_exists($notificationClass, 'toDatabase')) {
+                $notificationData = $notificationClass->toDatabase($recipient);
+            } elseif (method_exists($notificationClass, 'toBroadcast')) {
+                $broadcastData = $notificationClass->toBroadcast($recipient);
+                $notificationData = $broadcastData->data ?? $broadcastData;
+            }
+
+            // Extract data same as websocket structure
+            $entityId = $notificationData['checkout_id'] ?? $notificationData['rent_request_id'] ?? $notificationData['id'] ?? null;
+            $message = $notificationData['message'] ?? 'New notification';
+
+            Log::info('Inserting checkout notification', [
+                'recipient' => $recipient->id,
+                'purpose'   => $purpose->value,
+            ]);
+
+            // Create UserNotification record
+            $notification = UserNotification::create([
+                'user_id' => $recipient->id,
+                'sender_id' => $senderId,
+                'entity_id' => $entityId,
+                'purpose' => $purpose,
+                'title' => $purpose->label(),
+                'message' => $message,
+                'is_read' => false,
+            ]);
+
+            Log::info('Checkout notification row created', [
+                'id' => optional($notification)->id
+            ]);
+        } catch (Exception $e) {
+            Log::warning('Failed to create checkout UserNotification', [
+                'error' => $e->getMessage(),
+                'recipient_id' => $recipient->id,
+            ]);
+        }
     }
 
     /**
@@ -513,14 +565,34 @@ class CheckoutController extends Controller
                     })->get();
 
                     if ($adminUsers->count() > 0) {
-                        Notification::send($adminUsers, new \App\Notifications\CheckoutRequested($checkout));
+                        $notification = new \App\Notifications\CheckoutRequested($checkout);
+                        Notification::send($adminUsers, $notification);
+                        
+                        // Create UserNotification for each admin/agent
+                        foreach ($adminUsers as $adminUser) {
+                            $this->createUserNotificationFromWebsocketData(
+                                $adminUser,
+                                $notification,
+                                NotificationPurpose::CHECKOUT_REQUESTED,
+                                $checkout->requester_id
+                            );
+                        }
                     }
                     break;
 
                 case 'agent_decided':
                     // Notify owner if confirmation needed (rare: if agent decision should notify owner)
                     if ($checkout->owner_confirmation === 'pending') {
-                        Notification::send($rentRequest->property->owner, new \App\Notifications\CheckoutAwaitingOwnerConfirmation($checkout));
+                        $notification = new \App\Notifications\CheckoutAwaitingOwnerConfirmation($checkout);
+                        Notification::send($rentRequest->property->owner, $notification);
+                        
+                        // Create UserNotification from websocket data
+                        $this->createUserNotificationFromWebsocketData(
+                            $rentRequest->property->owner,
+                            $notification,
+                            NotificationPurpose::CHECKOUT_AWAITING_OWNER_CONFIRMATION,
+                            null
+                        );
                     }
                     break;
 
@@ -531,14 +603,44 @@ class CheckoutController extends Controller
                     })->get();
 
                     if ($agentUsers->count() > 0) {
-                        Notification::send($agentUsers, new \App\Notifications\CheckoutDispute($checkout));
+                        $notification = new \App\Notifications\CheckoutDispute($checkout);
+                        Notification::send($agentUsers, $notification);
+                        
+                        // Create UserNotification for each agent
+                        foreach ($agentUsers as $agentUser) {
+                            $this->createUserNotificationFromWebsocketData(
+                                $agentUser,
+                                $notification,
+                                NotificationPurpose::CHECKOUT_DISPUTE,
+                                $rentRequest->property->owner_id
+                            );
+                        }
                     }
                     break;
 
                 case 'completed':
                     // Notify both parties of completion
-                    Notification::send($rentRequest->user, new \App\Notifications\CheckoutCompleted($checkout));
-                    Notification::send($rentRequest->property->owner, new \App\Notifications\CheckoutCompleted($checkout));
+                    $userNotification = new \App\Notifications\CheckoutCompleted($checkout);
+                    Notification::send($rentRequest->user, $userNotification);
+                    
+                    // Create UserNotification from websocket data for user
+                    $this->createUserNotificationFromWebsocketData(
+                        $rentRequest->user,
+                        $userNotification,
+                        NotificationPurpose::CHECKOUT_COMPLETED,
+                        null
+                    );
+
+                    $ownerNotification = new \App\Notifications\CheckoutCompleted($checkout);
+                    Notification::send($rentRequest->property->owner, $ownerNotification);
+                    
+                    // Create UserNotification from websocket data for owner
+                    $this->createUserNotificationFromWebsocketData(
+                        $rentRequest->property->owner,
+                        $ownerNotification,
+                        NotificationPurpose::CHECKOUT_COMPLETED,
+                        null
+                    );
                     break;
             }
         } catch (Exception $e) {
@@ -668,6 +770,25 @@ class CheckoutController extends Controller
         // persist relation
         $checkout->refund_purchase_id = $refundPurchase->id;
         $checkout->save();
+
+        // Send refund notification
+        try {
+            $notification = new \App\Notifications\CheckoutRefundProcessed($checkout, $totalRefund);
+            Notification::send($rentRequest->user, $notification);
+            
+            // Create UserNotification from websocket data
+            $this->createUserNotificationFromWebsocketData(
+                $rentRequest->user,
+                $notification,
+                NotificationPurpose::CHECKOUT_REFUND_PROCESSED,
+                null
+            );
+        } catch (Exception $e) {
+            Log::warning('Failed to send refund notification', [
+                'error' => $e->getMessage(),
+                'checkout_id' => $checkout->id
+            ]);
+        }
     }
 
     public  function processPayout($checkout, $rentRequest, $totalPayout, $depositToOwner, $rentToOwner, $transactionRef, $depositReturnPercent)
@@ -712,6 +833,25 @@ class CheckoutController extends Controller
         // persist relation
         $checkout->payout_purchase_id = $payoutPurchase->id;
         $checkout->save();
+
+        // Send payout notification
+        try {
+            $notification = new \App\Notifications\CheckoutPayoutProcessed($checkout, $totalPayout);
+            Notification::send($rentRequest->property->owner, $notification);
+            
+            // Create UserNotification from websocket data
+            $this->createUserNotificationFromWebsocketData(
+                $rentRequest->property->owner,
+                $notification,
+                NotificationPurpose::CHECKOUT_PAYOUT_PROCESSED,
+                null
+            );
+        } catch (Exception $e) {
+            Log::warning('Failed to send payout notification', [
+                'error' => $e->getMessage(),
+                'checkout_id' => $checkout->id
+            ]);
+        }
     }
 
     /**
