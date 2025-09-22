@@ -38,6 +38,10 @@ use App\Http\Controllers\Api\CheckoutController;
 use App\Http\Controllers\UserNotificationController;
 use App\Http\Controllers\UserBalanceController;
 
+// Withdraw
+use App\Http\Controllers\WithdrawalController;
+
+
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
@@ -350,3 +354,14 @@ Route::middleware('auth:api')->get('/notifications', [UserNotificationController
 
 // User Balance
 Route::middleware('auth:api')->get('/balances', [UserBalanceController::class, 'getBalances']);
+
+// Withdraw
+
+Route::middleware(['auth:api'])->group(function () {
+    // Withdrawal routes
+    Route::prefix('withdrawals')->group(function () {
+        Route::get('/info', [WithdrawalController::class, 'getWithdrawalInfo']);
+        Route::post('/request', [WithdrawalController::class, 'requestWithdrawal']);
+        Route::get('/history', [WithdrawalController::class, 'getWithdrawalHistory']);
+    });
+});
