@@ -82,145 +82,167 @@ class PropertyPurchaseController extends Controller
     // ====================================================
     // PAY FOR PROPERTY
     // ====================================================
-    public function payForOwn(Request $request, $id)
-    {
-        $validator = \Validator::make($request->all(), [
-            'payment_method_token' => 'nullable|string',
-            'idempotency_key'      => 'nullable|string',
-            'expected_total'       => 'required|numeric|min:0',
-        ]);
+public function payForOwn(Request $request, $id)
+{
+    $validator = \Validator::make($request->all(), [
+        'payment_method_token' => 'nullable|string',
+        'idempotency_key'      => 'nullable|string',
+        'expected_total'       => 'required|numeric|min:0',
+    ]);
 
-        if ($validator->fails()) {
-            return $this->error('Validation failed.', 422, $validator->errors());
-        }
-
-        $user = $request->user();
-        if (!$user) return $this->error('Authentication required.', 401);
-        if ($user->status !== 'active') return $this->error('Your account must be active.', 403);
-
-        $idempotencyKey = $request->input('idempotency_key') ?? Str::uuid()->toString();
-        $paymentToken   = $request->input('payment_method_token');
-        $expectedTotal  = $request->input('expected_total');
-
-        try {
-            return DB::transaction(function () use ($id, $user, $idempotencyKey, $paymentToken, $expectedTotal) {
-                // Idempotency
-                $existingPurchase = PropertyPurchase::with('escrow')
-                    ->where('idempotency_key', $idempotencyKey)
-                    ->first();
-                if ($existingPurchase) {
-                    return $this->success('Purchase already processed.', [
-                        'purchase' => $existingPurchase,
-                        'escrow'   => $existingPurchase->escrow,
-                        'property' => $existingPurchase->property,
-                        'seller'   => $existingPurchase->seller,
-                    ]);
-                }
-
-                // Property checks
-                $property = Property::lockForUpdate()->find($id);
-                if (!$property) return $this->error('Property not found.', 404);
-                if ($property->status !== 'sale' || $property->property_state !== 'Valid') {
-                    return $this->error('This property is not valid for sale.', 422);
-                }
-
-                // Seller must exist and be active
-                $seller = $property->owner;
-                if (!$seller || $seller->status !== 'active') {
-                    return $this->error('Property owner is not active.', 422);
-                }
-
-                if ($property->owner_id === $user->id) {
-                    return $this->error('You cannot buy your own property.', 422);
-                }
-
-                // Ensure buyer did not already buy this property
-                $alreadyPurchased = PropertyPurchase::where('buyer_id', $user->id)
-                    ->where('property_id', $property->id)
-                    ->whereNotIn('status', ['cancelled', 'refunded'])
-                    ->exists();
-                if ($alreadyPurchased) {
-                    return $this->error('You already purchased this property.', 422);
-                }
-
-                // Price validation
-                $totalAmount = $property->price;
-                if (abs($totalAmount - $expectedTotal) > 0.01) {
-                    return $this->error('Price mismatch.', 422);
-                }
-
-                // 1. Create purchase
-                $purchase = PropertyPurchase::create([
-                    'property_id'          => $property->id,
-                    'buyer_id'             => $user->id,
-                    'seller_id'            => $property->owner_id,
-                    'amount'               => $totalAmount,
-                    'status'               => 'paid',
-                    'payment_gateway'      => $paymentToken ? 'gateway' : 'Wallet',
-                    'transaction_ref'      => Str::uuid()->toString(),
-                    'idempotency_key'      => $idempotencyKey,
-                    'cancellation_deadline'=> now()->addHours(24),
-                    'metadata'             => [
-                        'wallet_used'     => $totalAmount,
-                        'gateway_charged' => 0,
-                    ],
-                ]);
-
-                // 2. Create escrow
-                $escrow = PropertyEscrow::create([
-                    'property_purchase_id' => $purchase->id,
-                    'property_id'          => $property->id,
-                    'buyer_id'             => $user->id,
-                    'seller_id'            => $property->owner_id,
-                    'amount'               => $totalAmount,
-                    'status'               => 'locked',
-                    'locked_at'            => now(),
-                    'scheduled_release_at' => now()->addHours(24),
-                ]);
-
-                // 3. Mark property invalid immediately
-                $property->update([
-                    'property_state'   => 'Invalid',
-                    'pending_buyer_id' => $user->id,
-                ]);
-
-                // 4. Notifications
-                try {
-                    // Buyer notification
-                    $buyerNotification = new \App\Notifications\PropertyPurchaseInitiated($purchase);
-                    Notification::send($user, $buyerNotification);
-                    $this->createUserNotificationFromWebsocketData(
-                        $user,
-                        $buyerNotification,
-                        NotificationPurpose::PURCHASE_INITIATED,
-                        $property->owner_id
-                    );
-
-                    // Seller notification
-                    $sellerNotification = new \App\Notifications\PurchaseInitiatedSeller($purchase);
-                    Notification::send($seller, $sellerNotification);
-                    $this->createUserNotificationFromWebsocketData(
-                        $seller,
-                        $sellerNotification,
-                        NotificationPurpose::PROPERTY_PURCHASE_REQUESTED,
-                        $user->id
-                    );
-                } catch (Exception $e) {
-                    Log::warning('Notification failed on payForOwn', ['error' => $e->getMessage()]);
-                }
-
-                return $this->success('Purchase successful.', [
-                    'purchase' => $purchase,
-                    'escrow'   => $escrow,
-                    'property' => $property,
-                    'seller'   => $seller, // return owner data
-                ]);
-            });
-        } catch (\Throwable $e) {
-            Log::error('payForOwn error: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
-            return $this->error('Property purchase failed.', 500);
-        }
+    if ($validator->fails()) {
+        return $this->error('Validation failed.', 422, $validator->errors());
     }
+
+    $user = $request->user();
+    if (!$user) return $this->error('Authentication required.', 401);
+    if ($user->status !== 'active') return $this->error('Your account must be active.', 403);
+
+    $idempotencyKey = $request->input('idempotency_key') ?? Str::uuid()->toString();
+    $paymentToken   = $request->input('payment_method_token');
+    $expectedTotal  = $request->input('expected_total');
+
+    try {
+        return DB::transaction(function () use ($id, $user, $idempotencyKey, $paymentToken, $expectedTotal) {
+            // Idempotency check
+            $existingPurchase = PropertyPurchase::with('escrow')
+                ->where('idempotency_key', $idempotencyKey)
+                ->first();
+            if ($existingPurchase) {
+                return $this->success('Purchase already processed.', [
+                    'purchase' => $existingPurchase,
+                    'escrow'   => $existingPurchase->escrow,
+                    'property' => $existingPurchase->property,
+                    'seller'   => $existingPurchase->seller,
+                ]);
+            }
+
+            // Property validation
+            $property = Property::lockForUpdate()->find($id);
+            if (!$property) return $this->error('Property not found.', 404);
+            if ($property->status !== 'sale' || $property->property_state !== 'Valid') {
+                return $this->error('This property is not valid for sale.', 422);
+            }
+
+            $seller = $property->owner;
+            if (!$seller || $seller->status !== 'active') {
+                return $this->error('Property owner is not active.', 422);
+            }
+
+            if ($property->owner_id === $user->id) {
+                return $this->error('You cannot buy your own property.', 422);
+            }
+
+            $alreadyPurchased = PropertyPurchase::where('buyer_id', $user->id)
+                ->where('property_id', $property->id)
+                ->whereNotIn('status', ['cancelled', 'refunded'])
+                ->exists();
+            if ($alreadyPurchased) {
+                return $this->error('You already purchased this property.', 422);
+            }
+
+            // Price validation
+            $totalAmount = $property->price;
+            if (abs($totalAmount - $expectedTotal) > 0.01) {
+                return $this->error('Price mismatch.', 422);
+            }
+
+            // === Deduct from wallet (real money) ===
+            $wallet = Wallet::lockForUpdate()->firstOrCreate(
+                ['user_id' => $user->id],
+                ['balance' => 0]
+            );
+
+            if ($wallet->balance < $totalAmount) {
+                return $this->error('Insufficient wallet balance.', 422);
+            }
+
+            $before = $wallet->balance;
+            $wallet->decrement('balance', $totalAmount);
+
+            WalletTransaction::create([
+                'wallet_id'      => $wallet->id,
+                'amount'         => -$totalAmount,
+                'type'           => 'purchase',
+                'ref_id'         => $property->id,
+                'ref_type'       => 'property',
+                'description'    => 'Property purchase payment',
+                'balance_before' => $before,
+                'balance_after'  => $wallet->balance,
+            ]);
+
+            // === Create purchase record ===
+            $purchase = PropertyPurchase::create([
+                'property_id'          => $property->id,
+                'buyer_id'             => $user->id,
+                'seller_id'            => $property->owner_id,
+                'amount'               => $totalAmount,
+                'status'               => 'paid',
+                'payment_gateway'      => $paymentToken ? 'gateway' : 'Wallet',
+                'transaction_ref'      => Str::uuid()->toString(),
+                'idempotency_key'      => $idempotencyKey,
+                'cancellation_deadline'=> now()->addHours(24),
+                'metadata'             => [
+                    'wallet_used'     => $totalAmount,
+                    'gateway_charged' => 0,
+                ],
+            ]);
+
+            // === Create escrow ===
+            $escrow = PropertyEscrow::create([
+                'property_purchase_id' => $purchase->id,
+                'property_id'          => $property->id,
+                'buyer_id'             => $user->id,
+                'seller_id'            => $property->owner_id,
+                'amount'               => $totalAmount,
+                'status'               => 'locked',
+                'locked_at'            => now(),
+                'scheduled_release_at' => now()->addHours(24),
+            ]);
+
+            // Mark property as invalid (locked for buyer)
+            $property->update([
+                'property_state'   => 'Invalid',
+                'pending_buyer_id' => $user->id,
+            ]);
+
+            // Notifications
+            try {
+                $buyerNotification = new \App\Notifications\PropertyPurchaseInitiated($purchase);
+                Notification::send($user, $buyerNotification);
+                $this->createUserNotificationFromWebsocketData(
+                    $user,
+                    $buyerNotification,
+                    NotificationPurpose::PURCHASE_INITIATED,
+                    $property->owner_id
+                );
+
+                $sellerNotification = new \App\Notifications\PurchaseInitiatedSeller($purchase);
+                Notification::send($seller, $sellerNotification);
+                $this->createUserNotificationFromWebsocketData(
+                    $seller,
+                    $sellerNotification,
+                    NotificationPurpose::PROPERTY_PURCHASE_REQUESTED,
+                    $user->id
+                );
+            } catch (Exception $e) {
+                Log::warning('Notification failed on payForOwn', ['error' => $e->getMessage()]);
+            }
+
+            return $this->success('Purchase successful.', [
+                'purchase' => $purchase,
+                'escrow'   => $escrow,
+                'property' => $property,
+                'seller'   => $seller,
+                'wallet'   => $wallet,
+            ]);
+        });
+    } catch (\Throwable $e) {
+        Log::error('payForOwn error: '.$e->getMessage(), ['trace' => $e->getTraceAsString()]);
+        return $this->error('Property purchase failed.', 500);
+    }
+}
+
 
     // ====================================================
     // CANCEL PURCHASE
