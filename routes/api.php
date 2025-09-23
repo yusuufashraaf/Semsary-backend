@@ -137,7 +137,7 @@ Route::middleware('auth:api')->group(function () {
 
 Route::get('/features', [FeatureController::class, 'index']);
 
-Route::middleware(['auth:api', 'role:owner'])->group(function () {
+Route::middleware(['auth:api'])->group(function () {
     //properties
     Route::apiResource('/properties', PropertyController::class);
     //owner dashboard
