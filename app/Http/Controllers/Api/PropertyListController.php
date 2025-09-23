@@ -72,7 +72,7 @@ class PropertyListController extends Controller
         // Sorting
         if ($request->filled('sortBy')) {
             $sortField = $request->sortBy;
-            $sortOrder = $request->get('sortOrder', 'asc');
+            $sortOrder = strtolower($request->get('sortOrder', 'asc'));
             if (in_array($sortField, ['price', 'created_at', 'size'])) {
                 $query->orderBy($sortField, $sortOrder);
             }
