@@ -59,149 +59,160 @@ class AuthenticationController extends Controller
                  'user' => new UserResource($user)
             ], 201);
     }
-     public function verifyEmailOtp(Request $request)
-        {
-            $validator = Validator::make($request->all(), [
-                'user_id' => 'required|integer|exists:users,id',
-                'otp'     => 'required|string|min:6|max:6',
-            ]);
+   public function verifyEmailOtp(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email|exists:users,email',
+            'otp'   => 'required|string|size:6', // exactly 6 digits
+        ]);
 
-            if ($validator->fails()) {
-                return response()->json(['errors' => $validator->errors()], 422);
-            }
-
-            $user = User::find($request->user_id);
-
-            // to sure the user's email is not already verified
-            if ($user->email_verified_at) {
-                return response()->json(['message' => 'Email is already verified.'], 400);
-            }
-
-            // Check 1: Code Match & Check 2: Expiration
-            if ($user->email_otp !== $request->otp || now()->isAfter($user->email_otp_expires_at)) {
-                return response()->json(['message' => 'Invalid or expired verification code.'], 422);
-            }
-
-            // Verification Email successful
-            $user->update([
-                'email_verified_at' => now(),
-                'email_otp' => null,
-                'email_otp_expires_at' => null,
-            ]);
-
-            return response()->json(['message' => 'Email verified successfully']);
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
         }
-        public function resendEmailOtp(Request $request)
-        {
-           $validator = Validator::make(
-                $request->all(),
-                [
-                    'user_id' => 'required|integer|exists:users,id',
-                ],
-                [
-                    'user_id.required' => 'Something went wrong, please try again.',
-                    'user_id.integer'  => 'Invalid request format.',
-                    'user_id.exists'   => 'User not found.',
-                ]
-            );
 
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $validator->errors()->first(),
-                ], 422);
-            }
+        $user = User::where('email', $request->email)->first();
 
-            $user = User::find($request->user_id);
-
-            if ($user->email_verified_at) {
-                return response()->json(['message' => 'Email is already verified.'], 400);
-            }
-
-            $emailOtp = rand(100000, 999999);
-            $emailOtpExpiresAt = now()->addMinutes(10);
-
-            $user->update([
-                'email_otp' => $emailOtp,
-                'email_otp_expires_at' => $emailOtpExpiresAt,
-            ]);
-
-            sendOTPJOB::dispatch($user);
-
-            return response()->json(['message' => 'A new verification code has been sent to your email.']);
+        if ($user->email_verified_at) {
+            return response()->json(['message' => 'Email is already verified.'], 400);
         }
-    public function sendPhoneOtp(Request $request)
-        {
 
-            $validator = Validator::make($request->all(), [
-                'user_id' => 'required|integer|exists:users,id',
+        if ($user->email_otp !== $request->otp || now()->isAfter($user->email_otp_expires_at)) {
+            return response()->json(['message' => 'Invalid or expired verification code.'], 422);
+        }
+
+        $user->update([
+            'email_verified_at'   => now(),
+            'email_otp'           => null,
+            'email_otp_expires_at'=> null,
+        ]);
+
+        return response()->json(['message' => 'Email verified successfully']);
+    }
+     public function resendEmailOtp(Request $request)
+    {
+        $validator = Validator::make(
+            $request->all(),
+            [
+                'email' => 'required|email|exists:users,email',
+            ],
+            [
+                'email.required' => 'Email is required.',
+                'email.email'    => 'Invalid email format.',
+                'email.exists'   => 'User not found.',
+            ]
+        );
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => $validator->errors()->first(),
+            ], 422);
+        }
+
+        $user = User::where('email', $request->email)->first();
+
+        if ($user->email_verified_at) {
+            return response()->json(['message' => 'Email is already verified.'], 400);
+        }
+
+        $emailOtp = rand(100000, 999999);
+        $emailOtpExpiresAt = now()->addMinutes(10);
+
+        $user->update([
+            'email_otp'           => $emailOtp,
+            'email_otp_expires_at'=> $emailOtpExpiresAt,
+        ]);
+
+        sendOTPJOB::dispatch($user);
+
+        return response()->json(['message' => 'A new verification code has been sent to your email.']);
+    }
+ public function sendPhoneOtp(Request $request)
+{
+    $validator = Validator::make($request->all(), [
+        'phone_number' => 'required|string',
+        'user_id' => 'required|integer|exists:users,id'
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
+
+    $currentUser = User::find($request->user_id);
+
+    // Check if phone is already used by another user
+    $existingUser = User::where('phone_number', $request->phone_number)
+        ->where('id', '!=', $request->user_id)
+        ->first();
+
+    if ($existingUser) {
+        return response()->json(['message' => 'Phone number is already used by another account.'], 400);
+    }
+
+    // If phone number is new, update it for current user
+    if ($currentUser->phone_number !== $request->phone_number) {
+        $currentUser->update(['phone_number' => $request->phone_number]);
+    }
+
+    // Already verified check
+    if ($currentUser->phone_verified_at) {
+        return response()->json(['message' => 'Phone number is already verified.'], 400);
+    }
+
+    // Generate OTP
+    $otp = rand(100000, 999999);
+    $expires_at = now()->addMinutes(10);
+
+    $currentUser->update([
+        'whatsapp_otp' => $otp,
+        'whatsapp_otp_expires_at' => $expires_at,
+    ]);
+
+    try {
+        $response = $this->phone_verification_service->sendOtpMessage($currentUser->phone_number, $otp);
+
+        if ($response->failed()) {
+            Log::error('WhatsApp service failed to send OTP.', [
+                'user_id' => $currentUser->id,
+                'status' => $response->status(),
+                'response_body' => $response->body(),
             ]);
 
-            if ($validator->fails()) {
-                return response()->json(['errors' => $validator->errors()], 422);
-            }
-
-            $user = User::find($request->user_id);
-
-            if ($user->phone_verified_at) {
-                return response()->json(['message' => 'Phone number is already verified.'], 400);
-            }
-
-
-            $otp = rand(100000, 999999);
-            $expires_at = now()->addMinutes(10);
-
-
-            $user->update([
-                'whatsapp_otp' => $otp,
-                'whatsapp_otp_expires_at' => $expires_at,
+            $currentUser->update([
+                'whatsapp_otp' => null,
+                'whatsapp_otp_expires_at' => null,
             ]);
 
-               try {
-                    $response = $this->phone_verification_service->sendOtpMessage($user->phone_number, $otp);
+            return response()->json([
+                'message' => 'Unable to send verification code. Please check the number and try again.'
+            ], 502);
+        }
+    } catch (\Throwable $e) {
+        $currentUser->update([
+            'whatsapp_otp' => null,
+            'whatsapp_otp_expires_at' => null,
+        ]);
 
+        Log::error('WhatsApp OTP service exception: ' . $e->getMessage());
+        return response()->json([
+            'message' => 'Server error. Please try again later.'
+        ], 500);
+    }
 
-                    if ($response->failed()) {
-
-                        Log::error('WhatsApp service failed to send OTP.', [
-                            'user_id' => $user->id,
-                            'status' => $response->status(),
-                            'response_body' => $response->body(),
-                        ]);
-
-                        $user->update([
-                            'whatsapp_otp' => null,
-                            'whatsapp_otp_expires_at' => null,
-                        ]);
-
-                        return response()->json(['message' => 'We were unable to send a verification code to your phone. Please check the number and try again.'], 502);
-                    }
-
-
-                } catch (\Throwable $e) {
-                    $user->update([
-                        'whatsapp_otp' => null,
-                        'whatsapp_otp_expires_at' => null,
-                    ]);
-
-                    Log::error('WhatsApp OTP sending service threw an exception: ' . $e->getMessage());
-                    return response()->json(['message' => 'Failed to send verification code due to a server error. Please try again later.'], 500);
-                }
-
-                return response()->json(['message' => 'A verification code has been sent to your phone.']);
-            }
+    return response()->json(['message' => 'A verification code has been sent to your phone.']);
+}
 
 
 
     /**
      * Verify the phone number using the submitted OTP.
      */
-    public function verifyPhoneOtp(Request $request)
+ public function verifyPhoneOtp(Request $request)
     {
-        // 1. Validate the incoming request.
         $validator = Validator::make($request->all(), [
+            'phone_number' => 'required|string',
             'user_id' => 'required|integer|exists:users,id',
-            'otp'     => 'required|string|min:6|max:6',
+            'otp' => 'required|string|min:6|max:6',
         ]);
 
         if ($validator->fails()) {
@@ -210,22 +221,21 @@ class AuthenticationController extends Controller
 
         $user = User::find($request->user_id);
 
-        // Security check: Ensure the phone is not already verified.
+        if ($user->phone_number !== $request->phone_number) {
+            return response()->json(['message' => 'Phone number does not match your account.'], 400);
+        }
+
         if ($user->phone_verified_at) {
             return response()->json(['message' => 'Phone number is already verified.'], 400);
         }
 
-        // 2. Perform the security checks.
-        // Check 1: Does the submitted OTP match the one in the database?
-        // Check 2: Is the current time before the expiration time?
         if ($user->whatsapp_otp !== $request->otp || now()->isAfter($user->whatsapp_otp_expires_at)) {
             return response()->json(['message' => 'Invalid or expired verification code.'], 422);
         }
 
-        // 3. If checks pass, update the user record.
         $user->update([
-            'phone_verified_at' => now(), // Mark the phone as verified.
-            'whatsapp_otp' => null,          // CRUCIAL: Nullify the OTP so it cannot be used again.
+            'phone_verified_at' => now(),
+            'whatsapp_otp' => null,
             'whatsapp_otp_expires_at' => null,
         ]);
 
