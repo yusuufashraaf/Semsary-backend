@@ -197,6 +197,8 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
 
     // SEM-65 CS Agent Management Routes
     Route::get('/cs-agents', [CsAgentController::class, 'index']);
+    Route::get('/cs-agents/{id}', [CsAgentController::class, 'show']);
+    Route::get('/cs-agents/{id}/assignments', [CsAgentController::class, 'getAssignments']);
 
     // SEM-64: CS Agent Dashboard API Implementation
     Route::prefix('cs-agents')->group(function () {
@@ -233,6 +235,15 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
 Route::prefix('cs-agent')->middleware(['auth:api', 'role:agent'])->group(function () {
     // Get assigned properties (task queue)
     Route::get('/properties', [CsAgentPropertyController::class, 'index']);
+
+    // Get detailed view of a specific assigned property
+    Route::get('/properties/{id}', [CsAgentPropertyController::class, 'show']);
+
+    // Get timeline/history for a specific assigned property
+    Route::get('/properties/{property}/timeline', [CsAgentPropertyController::class, 'getTimeline']);
+
+    // Add note to property timeline
+    Route::post('/properties/{property}/notes', [CsAgentPropertyController::class, 'addNote']);
 
     // Update verification status
     Route::patch('/properties/{property}/status', [PropertyVerificationController::class, 'update']);
