@@ -246,6 +246,15 @@ class AuthenticationController extends Controller
         }
 
         $user = auth('api')->user();
+
+
+        if (is_null($user->email_verified_at)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Please verify your email before logging in.'
+            ], 403);
+        }
+
         $refreshToken = Str::random(60);
         // Generate a new refresh token
 
