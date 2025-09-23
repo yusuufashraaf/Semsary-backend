@@ -45,14 +45,22 @@ use App\Http\Controllers\WithdrawalController;
 // Buy Property
 use App\Http\Controllers\PropertyPurchaseController;
 
+use App\Http\Controllers\NewMessageController;
+
+
+
 //wallet
 use App\Http\Controllers\Api\BalanceApiController;
 
 Route::get('/user', function (Request $request) {
-    return $request->user();
+    return true;//$request->user();
 })->middleware('auth:sanctum');
 
-
+//Realtime Messaging
+Route::post('/send-message',[NewMessageController::class,'sendMessage']);
+Route::post('/broadcasting/auth',[NewMessageController::class,'authenticateBroadcast']);
+Route::get('/fetch-messages/{chatId}',[NewMessageController::class,'fetchMessages']);
+Route::get('/fetch-chats/{userId}',[NewMessageController::class,'fetchChats']);
 
 
 // Public routes
@@ -294,9 +302,12 @@ Route::middleware('auth:api')->prefix('user')->group(function () {
     Route::post('/chats/start', [MessageController::class, 'startChat']);
     
     Route::post('/chats/{chat}/read', [MessageController::class, 'markAsRead']);
+    
+    // ADD THIS ROUTE for broadcasting authentication
+    Route::post('/broadcasting/auth', [MessageController::class, 'authenticateBroadcast']);
 });
 
-Route::get('user/reviewable-properties', [ReviewController::class, 'getReviewableProperties']);
+Route::middleware('auth:api')->get('user/reviewable-properties', [ReviewController::class, 'getReviewableProperties']);
 
 Route::middleware('auth:api')->prefix('user/{id}')->group(function ($id) {
     Route::get('/', [UserController::class, 'index']);

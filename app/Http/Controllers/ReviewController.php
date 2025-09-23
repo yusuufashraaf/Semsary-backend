@@ -26,15 +26,15 @@ class ReviewController extends Controller
 
     public function getReviewableProperties()
 {
-    //$user = auth('api')->user();
+    $user = auth('api')->user();
     
     // Get properties that the user owns and hasn't reviewed yet
 
-    $userId = 50; // Or get from auth: auth('api')->user()->id
+    //$userId = 50; // Or get from auth: auth('api')->user()->id
     
     // Get properties from completed rent requests
     $rentRequests = RentRequest::with('property')
-        ->where('user_id', $userId)
+        ->where('user_id', $user->id)
         ->where('status', 'completed')
         ->get();
 
