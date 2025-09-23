@@ -85,9 +85,8 @@ class PropertyPurchaseController extends Controller
 public function payForOwn(Request $request, $id)
 {
     $validator = \Validator::make($request->all(), [
-        'payment_method_token' => 'nullable|string',
-        'idempotency_key'      => 'nullable|string',
-        'expected_total'       => 'required|numeric|min:0',
+        'idempotency_key' => 'nullable|string',
+        'expected_total'  => 'required|numeric|min:0',
     ]);
 
     if ($validator->fails()) {
@@ -99,29 +98,18 @@ public function payForOwn(Request $request, $id)
     if ($user->status !== 'active') return $this->error('Your account must be active.', 403);
 
     $idempotencyKey = $request->input('idempotency_key') ?? Str::uuid()->toString();
-    $paymentToken   = $request->input('payment_method_token');
     $expectedTotal  = $request->input('expected_total');
 
     try {
-        return DB::transaction(function () use ($id, $user, $idempotencyKey, $paymentToken, $expectedTotal) {
-            // Idempotency check
-            $existingPurchase = PropertyPurchase::with('escrow')
-                ->where('idempotency_key', $idempotencyKey)
-                ->first();
-            if ($existingPurchase) {
-                return $this->success('Purchase already processed.', [
-                    'purchase' => $existingPurchase,
-                    'escrow'   => $existingPurchase->escrow,
-                    'property' => $existingPurchase->property,
-                    'seller'   => $existingPurchase->seller,
-                ]);
-            }
-
-            // Property validation
+        return DB::transaction(function () use ($id, $user, $idempotencyKey, $expectedTotal) {
+            // Validate property
             $property = Property::lockForUpdate()->find($id);
             if (!$property) return $this->error('Property not found.', 404);
             if ($property->status !== 'sale' || $property->property_state !== 'Valid') {
                 return $this->error('This property is not valid for sale.', 422);
+            }
+            if ($property->owner_id === $user->id) {
+                return $this->error('You cannot buy your own property.', 422);
             }
 
             $seller = $property->owner;
@@ -129,112 +117,95 @@ public function payForOwn(Request $request, $id)
                 return $this->error('Property owner is not active.', 422);
             }
 
-            if ($property->owner_id === $user->id) {
-                return $this->error('You cannot buy your own property.', 422);
-            }
-
-            $alreadyPurchased = PropertyPurchase::where('buyer_id', $user->id)
-                ->where('property_id', $property->id)
-                ->whereNotIn('status', ['cancelled', 'refunded'])
-                ->exists();
-            if ($alreadyPurchased) {
-                return $this->error('You already purchased this property.', 422);
-            }
-
-            // Price validation
+            // Price check
             $totalAmount = $property->price;
             if (abs($totalAmount - $expectedTotal) > 0.01) {
                 return $this->error('Price mismatch.', 422);
             }
 
-            // === Deduct from wallet (real money) ===
+            // Wallet check
             $wallet = Wallet::lockForUpdate()->firstOrCreate(
                 ['user_id' => $user->id],
                 ['balance' => 0]
             );
 
-            if ($wallet->balance < $totalAmount) {
-                return $this->error('Insufficient wallet balance.', 422);
+            $walletBalance = $wallet->balance;
+
+            if ($walletBalance < $totalAmount) {
+                // Not enough balance → Paymob flow
+                $shortfall = $totalAmount - $walletBalance;
+
+                $paymob = app(\App\Services\PaymobPaymentService::class);
+                $paymentKey = $paymob->createPaymentKey([
+                    'amount_cents' => intval($shortfall * 100),
+                    'currency'     => 'EGP',
+                    'user'         => $user,
+                    'metadata'     => [
+                        'property_id'    => $property->id,
+                        'buyer_id'       => $user->id,
+                        'seller_id'      => $property->owner_id,
+                        'wallet_to_use'  => $walletBalance,
+                        'idempotency_key'=> $idempotencyKey,
+                        'flow'           => 'property_purchase',
+                    ],
+                ]);
+
+                return $this->success('Redirecting to Paymob for remaining balance.', [
+                    'payment_method' => 'wallet+paymob',
+                    'iframe_url'     => env('PAYMOB_IFRAME_URL') . '?payment_token=' . $paymentKey,
+                    'shortfall'      => $shortfall,
+                    'wallet_balance' => $walletBalance,
+                ]);
             }
 
-            $before = $wallet->balance;
+            // Fully wallet funded → deduct and finalize instantly
             $wallet->decrement('balance', $totalAmount);
 
-            WalletTransaction::create([
-                'wallet_id'      => $wallet->id,
-                'amount'         => -$totalAmount,
-                'type'           => 'purchase',
-                'ref_id'         => $property->id,
-                'ref_type'       => 'property',
-                'description'    => 'Property purchase payment',
-                'balance_before' => $before,
-                'balance_after'  => $wallet->balance,
-            ]);
-
-            // === Create purchase record ===
             $purchase = PropertyPurchase::create([
-                'property_id'          => $property->id,
-                'buyer_id'             => $user->id,
-                'seller_id'            => $property->owner_id,
-                'amount'               => $totalAmount,
-                'status'               => 'paid',
-                'payment_gateway'      => $paymentToken ? 'gateway' : 'Wallet',
-                'transaction_ref'      => Str::uuid()->toString(),
-                'idempotency_key'      => $idempotencyKey,
-                'cancellation_deadline'=> now()->addHours(24),
-                'metadata'             => [
-                    'wallet_used'     => $totalAmount,
-                    'gateway_charged' => 0,
+                'property_id'     => $property->id,
+                'buyer_id'        => $user->id,
+                'seller_id'       => $property->owner_id,
+                'amount'          => $totalAmount,
+                'status'          => 'paid',
+                'payment_gateway' => 'wallet',
+                'transaction_ref' => Str::uuid()->toString(),
+                'idempotency_key' => $idempotencyKey,
+                'metadata'        => [
+                    'wallet_to_use'  => $totalAmount,
+                    'payment_method' => 'wallet',
                 ],
             ]);
 
-            // === Create escrow ===
+            //  Always create escrow
             $escrow = PropertyEscrow::create([
-                'property_purchase_id' => $purchase->id,
-                'property_id'          => $property->id,
-                'buyer_id'             => $user->id,
-                'seller_id'            => $property->owner_id,
-                'amount'               => $totalAmount,
-                'status'               => 'locked',
-                'locked_at'            => now(),
-                'scheduled_release_at' => now()->addHours(24),
+                'property_purchase_id'         => $purchase->id,
+                    'property_id'          => $property->id,   
+
+                'buyer_id'            => $user->id,
+                'seller_id'           => $property->owner_id,
+                'amount'              => $totalAmount,
+                'status'              => 'locked',
+                'locked_at'           => now(),
+                'scheduled_release_at'=> now()->addDays(3), // configurable cancellation window
             ]);
 
-            // Mark property as invalid (locked for buyer)
-            $property->update([
-                'property_state'   => 'Invalid',
-                'pending_buyer_id' => $user->id,
-            ]);
-
-            // Notifications
+            // 🔔 Send notifications (buyer & seller)
             try {
-                $buyerNotification = new \App\Notifications\PropertyPurchaseInitiated($purchase);
-                Notification::send($user, $buyerNotification);
-                $this->createUserNotificationFromWebsocketData(
-                    $user,
-                    $buyerNotification,
-                    NotificationPurpose::PURCHASE_INITIATED,
-                    $property->owner_id
-                );
+                $buyerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
+                \Notification::send($user, $buyerNotification);
 
-                $sellerNotification = new \App\Notifications\PurchaseInitiatedSeller($purchase);
-                Notification::send($seller, $sellerNotification);
-                $this->createUserNotificationFromWebsocketData(
-                    $seller,
-                    $sellerNotification,
-                    NotificationPurpose::PROPERTY_PURCHASE_REQUESTED,
-                    $user->id
-                );
-            } catch (Exception $e) {
-                Log::warning('Notification failed on payForOwn', ['error' => $e->getMessage()]);
+                $sellerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
+                \Notification::send($purchase->seller, $sellerNotification);
+            } catch (\Exception $e) {
+                \Log::warning('Notification failed on payForOwn success', [
+                    'error' => $e->getMessage()
+                ]);
             }
 
-            return $this->success('Purchase successful.', [
-                'purchase' => $purchase,
-                'escrow'   => $escrow,
-                'property' => $property,
-                'seller'   => $seller,
-                'wallet'   => $wallet,
+            return $this->success('Purchase successful via wallet.', [
+                'purchase'       => $purchase,
+                'escrow'         => $escrow,
+                'wallet_balance' => $wallet->balance,
             ]);
         });
     } catch (\Throwable $e) {
@@ -247,30 +218,53 @@ public function payForOwn(Request $request, $id)
     // ====================================================
     // CANCEL PURCHASE
     // ====================================================
-    public function cancelPurchase(Request $request, $purchaseId)
-    {
-        $user = $request->user();
-        if (!$user) {
-            return $this->error('Authentication required.', 401);
+public function cancelPurchase(Request $request, $purchaseId)
+{
+    $user = $request->user();
+    if (!$user) {
+        return $this->error('Authentication required.', 401);
+    }
+
+    $purchase = PropertyPurchase::with('escrow', 'property', 'seller')
+        ->where('id', $purchaseId)
+        ->first();
+
+    if (!$purchase) {
+        return $this->error('Purchase not found.', 404);
+    }
+
+    if ($purchase->buyer_id !== $user->id) {
+        return $this->error('Only the buyer can cancel this purchase.', 403);
+    }
+
+    $escrow = $purchase->escrow;
+
+    // Case 1: Pending purchase (no escrow yet, waiting for Paymob)
+    if ($purchase->status === 'pending' && !$escrow) {
+        $purchase->update(['status' => 'cancelled']);
+        $purchase->property->update([
+            'status'           => 'sale',
+            'property_state'   => 'Valid',
+            'pending_buyer_id' => null,
+        ]);
+
+        try {
+            $buyerNotification = new \App\Notifications\PropertyPurchaseCancelled($purchase);
+            Notification::send($user, $buyerNotification);
+
+            $sellerNotification = new \App\Notifications\PurchaseCancelledByBuyer($purchase);
+            Notification::send($purchase->seller, $sellerNotification);
+        } catch (\Exception $e) {
+            Log::warning('Notification failed on cancelPurchase (pending)', [
+                'error' => $e->getMessage()
+            ]);
         }
 
-        $purchase = PropertyPurchase::with('escrow', 'property', 'seller')
-            ->where('id', $purchaseId)
-            ->first();
+        return $this->success('Pending purchase cancelled successfully.');
+    }
 
-        if (!$purchase) {
-            return $this->error('Purchase not found.', 404);
-        }
-
-        if ($purchase->buyer_id !== $user->id) {
-            return $this->error('Only the buyer can cancel this purchase.', 403);
-        }
-
-        $escrow = $purchase->escrow;
-        if (!$escrow || $escrow->status !== 'locked') {
-            return $this->error('Purchase cannot be cancelled.', 422);
-        }
-
+    // Case 2: Escrow exists and is locked (covers paid and paymob-funded)
+    if ($escrow && $escrow->status === 'locked') {
         if ($escrow->scheduled_release_at->isPast()) {
             return $this->error('Cancellation window has expired.', 422);
         }
@@ -301,37 +295,33 @@ public function payForOwn(Request $request, $id)
             ]);
 
             $escrow->update([
-                'status'        => 'refunded_to_buyer',
-                'released_at'   => now(),
-                'release_reason'=> 'buyer_cancelled',
+                'status'         => 'refunded_to_buyer',
+                'released_at'    => now(),
+                'release_reason' => 'buyer_cancelled',
             ]);
+
             $purchase->update(['status' => 'cancelled']);
 
             try {
                 $buyerNotification = new \App\Notifications\PropertyPurchaseCancelled($purchase);
                 Notification::send($user, $buyerNotification);
-                $this->createUserNotificationFromWebsocketData(
-                    $user,
-                    $buyerNotification,
-                    NotificationPurpose::PURCHASE_CANCELLED,
-                    $purchase->seller_id
-                );
 
                 $sellerNotification = new \App\Notifications\PurchaseCancelledByBuyer($purchase);
                 Notification::send($purchase->seller, $sellerNotification);
-                $this->createUserNotificationFromWebsocketData(
-                    $purchase->seller,
-                    $sellerNotification,
-                    NotificationPurpose::PURCHASE_CANCELLED,
-                    $user->id
-                );
-            } catch (Exception $e) {
-                Log::warning('Notification failed on cancelPurchase', ['error' => $e->getMessage()]);
+            } catch (\Exception $e) {
+                Log::warning('Notification failed on cancelPurchase (escrow)', [
+                    'error' => $e->getMessage()
+                ]);
             }
 
             return $this->success('Purchase cancelled and money refunded.');
         });
     }
+
+    // Otherwise: cannot cancel (already completed or escrow released)
+    return $this->error('Purchase cannot be cancelled.', 422);
+}
+
 
     // ====================================================
     // ALL USER TRANSACTIONS
@@ -371,4 +361,153 @@ public function payForOwn(Request $request, $id)
             'rents'     => $rents,
         ]);
     }
+
+    /**
+ * Get user's property purchases
+ * GET /api/user/purchases
+ */
+public function getUserPurchases(Request $request)
+{
+    $user = $request->user();
+    if (!$user) {
+        return $this->error('Authentication required.', 401);
+    }
+
+    try {
+        // Get purchases where user is the buyer
+        $purchases = PropertyPurchase::with(['property', 'escrow', 'seller'])
+            ->where('buyer_id', $user->id)
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        // Transform the data to include property details
+        $transformedPurchases = $purchases->map(function ($purchase) {
+            return [
+                'id' => $purchase->id,
+                'property_id' => $purchase->property_id,
+                'buyer_id' => $purchase->buyer_id,
+                'seller_id' => $purchase->seller_id,
+                'amount' => $purchase->amount,
+                'status' => $purchase->status,
+                'payment_gateway' => $purchase->payment_gateway,
+                'transaction_ref' => $purchase->transaction_ref,
+                'idempotency_key' => $purchase->idempotency_key,
+                'cancellation_deadline' => $purchase->cancellation_deadline,
+                'metadata' => $purchase->metadata,
+                'created_at' => $purchase->created_at,
+                'updated_at' => $purchase->updated_at,
+                'property' => [
+                    'id' => $purchase->property->id,
+                    'title' => $purchase->property->title,
+                    'price' => $purchase->property->price,
+                    'property_state' => $purchase->property->property_state,
+                    'status' => $purchase->property->status,
+                ],
+                'escrow' => $purchase->escrow ? [
+                    'id' => $purchase->escrow->id,
+                    'status' => $purchase->escrow->status,
+                    'amount' => $purchase->escrow->amount,
+                    'locked_at' => $purchase->escrow->locked_at,
+                    'scheduled_release_at' => $purchase->escrow->scheduled_release_at,
+                    'released_at' => $purchase->escrow->released_at,
+                ] : null,
+                'seller' => [
+                    'id' => $purchase->seller->id,
+                    'first_name' => $purchase->seller->first_name,
+                    'last_name' => $purchase->seller->last_name,
+                    'email' => $purchase->seller->email,
+                ]
+            ];
+        });
+
+        return $this->success('User purchases retrieved successfully.', [
+            'purchases' => $transformedPurchases,
+            'count' => $transformedPurchases->count()
+        ]);
+
+    } catch (\Throwable $e) {
+        Log::error('getUserPurchases error: ' . $e->getMessage(), [
+            'user_id' => $user->id,
+            'trace' => $e->getTraceAsString()
+        ]);
+        return $this->error('Failed to retrieve purchases.', 500);
+    }
+}
+
+/**
+ * Get specific purchase by property ID (for current user)
+ * GET /api/properties/{propertyId}/purchase
+ */
+public function getUserPurchaseForProperty(Request $request, $propertyId)
+{
+    $user = $request->user();
+    if (!$user) {
+        return $this->error('Authentication required.', 401);
+    }
+
+    try {
+        $purchase = PropertyPurchase::with(['property', 'escrow', 'seller'])
+            ->where('buyer_id', $user->id)
+            ->where('property_id', $propertyId)
+            ->whereNotIn('status', ['cancelled', 'refunded'])
+            ->first();
+
+        if (!$purchase) {
+            // Return success with `purchase: null`
+            return $this->success('No active purchase found for this property.', [
+                'purchase' => null
+            ]);
+        }
+
+        $transformedPurchase = [
+            'id' => $purchase->id,
+            'property_id' => $purchase->property_id,
+            'buyer_id' => $purchase->buyer_id,
+            'seller_id' => $purchase->seller_id,
+            'amount' => $purchase->amount,
+            'status' => $purchase->status,
+            'payment_gateway' => $purchase->payment_gateway,
+            'transaction_ref' => $purchase->transaction_ref,
+            'idempotency_key' => $purchase->idempotency_key,
+            'cancellation_deadline' => $purchase->cancellation_deadline,
+            'metadata' => $purchase->metadata,
+            'created_at' => $purchase->created_at,
+            'updated_at' => $purchase->updated_at,
+            'property' => [
+                'id' => $purchase->property->id,
+                'title' => $purchase->property->title,
+                'price' => $purchase->property->price,
+                'property_state' => $purchase->property->property_state,
+                'status' => $purchase->property->status,
+            ],
+            'escrow' => $purchase->escrow ? [
+                'id' => $purchase->escrow->id,
+                'status' => $purchase->escrow->status,
+                'amount' => $purchase->escrow->amount,
+                'locked_at' => $purchase->escrow->locked_at,
+                'scheduled_release_at' => $purchase->escrow->scheduled_release_at,
+                'released_at' => $purchase->escrow->released_at,
+            ] : null,
+            'seller' => [
+                'id' => $purchase->seller->id,
+                'first_name' => $purchase->seller->first_name,
+                'last_name' => $purchase->seller->last_name,
+                'email' => $purchase->seller->email,
+            ]
+        ];
+
+        return $this->success('Purchase found.', [
+            'purchase' => $transformedPurchase
+        ]);
+
+    } catch (\Throwable $e) {
+        Log::error('getUserPurchaseForProperty error: ' . $e->getMessage(), [
+            'user_id' => $user->id,
+            'property_id' => $propertyId,
+            'trace' => $e->getTraceAsString()
+        ]);
+        return $this->error('Failed to retrieve purchase.', 500);
+    }
+}
+
 }

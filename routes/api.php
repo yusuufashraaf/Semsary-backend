@@ -117,7 +117,6 @@ Route::middleware('auth:api')->group(function () {
 
   // payment
 Route::get('/exchange-payment-token', [PaymentController::class, 'exchangePaymentToken']);
-Route::match(['GET','POST'],'/payment/callback', [PaymentController::class, 'callBack']);
 
 Route::middleware('auth:api')->group(function () {
 
@@ -417,3 +416,32 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('/history', [WithdrawalController::class, 'getWithdrawalHistory']);
     });
 });
+
+
+Route::get('/properties/{id}/unavailable-dates', [RentRequestController::class, 'getUnavailableDates']);
+
+
+// Property Purchase routes (add these to your existing routes)
+Route::middleware('auth:api')->group(function () {
+        
+    // NEW: Get user's purchases only
+    Route::get('/user/purchases', [PropertyPurchaseController::class, 'getUserPurchases']);
+    
+    // NEW: Get user's purchase for specific property
+    Route::get('/properties/{propertyId}/purchase', [PropertyPurchaseController::class, 'getUserPurchaseForProperty']);
+    
+});
+
+// -------------------- WALLET TOP UP --------------------
+Route::middleware('auth:api')->group(function () {
+    // Start a wallet top-up (returns payment_key + iframe url)
+    Route::post('/wallet/topup', [PaymentController::class, 'topUpWallet']);
+
+    // After callback, frontend exchanges temp token for final payment status
+    Route::post('/wallet/exchange-token', [PaymentController::class, 'exchangePaymentToken']);
+});
+
+// -------------------- PAYMOB CALLBACK --------------------
+//  Must NOT be behind sanctum, because Paymob’s server calls it
+Route::post('/payment/callback', [PaymentController::class, 'callBack'])
+    ->name('payment.callback');
