@@ -59,77 +59,74 @@ class AuthenticationController extends Controller
                  'user' => new UserResource($user)
             ], 201);
     }
-     public function verifyEmailOtp(Request $request)
-        {
-            $validator = Validator::make($request->all(), [
-                'user_id' => 'required|integer|exists:users,id',
-                'otp'     => 'required|string|min:6|max:6',
-            ]);
+   public function verifyEmailOtp(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email|exists:users,email',
+            'otp'   => 'required|string|size:6', // exactly 6 digits
+        ]);
 
-            if ($validator->fails()) {
-                return response()->json(['errors' => $validator->errors()], 422);
-            }
-
-            $user = User::find($request->user_id);
-
-            // to sure the user's email is not already verified
-            if ($user->email_verified_at) {
-                return response()->json(['message' => 'Email is already verified.'], 400);
-            }
-
-            // Check 1: Code Match & Check 2: Expiration
-            if ($user->email_otp !== $request->otp || now()->isAfter($user->email_otp_expires_at)) {
-                return response()->json(['message' => 'Invalid or expired verification code.'], 422);
-            }
-
-            // Verification Email successful
-            $user->update([
-                'email_verified_at' => now(),
-                'email_otp' => null,
-                'email_otp_expires_at' => null,
-            ]);
-
-            return response()->json(['message' => 'Email verified successfully']);
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
         }
-        public function resendEmailOtp(Request $request)
-        {
-           $validator = Validator::make(
-                $request->all(),
-                [
-                    'user_id' => 'required|integer|exists:users,id',
-                ],
-                [
-                    'user_id.required' => 'Something went wrong, please try again.',
-                    'user_id.integer'  => 'Invalid request format.',
-                    'user_id.exists'   => 'User not found.',
-                ]
-            );
 
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $validator->errors()->first(),
-                ], 422);
-            }
+        $user = User::where('email', $request->email)->first();
 
-            $user = User::find($request->user_id);
-
-            if ($user->email_verified_at) {
-                return response()->json(['message' => 'Email is already verified.'], 400);
-            }
-
-            $emailOtp = rand(100000, 999999);
-            $emailOtpExpiresAt = now()->addMinutes(10);
-
-            $user->update([
-                'email_otp' => $emailOtp,
-                'email_otp_expires_at' => $emailOtpExpiresAt,
-            ]);
-
-            sendOTPJOB::dispatch($user);
-
-            return response()->json(['message' => 'A new verification code has been sent to your email.']);
+        if ($user->email_verified_at) {
+            return response()->json(['message' => 'Email is already verified.'], 400);
         }
+
+        if ($user->email_otp !== $request->otp || now()->isAfter($user->email_otp_expires_at)) {
+            return response()->json(['message' => 'Invalid or expired verification code.'], 422);
+        }
+
+        $user->update([
+            'email_verified_at'   => now(),
+            'email_otp'           => null,
+            'email_otp_expires_at'=> null,
+        ]);
+
+        return response()->json(['message' => 'Email verified successfully']);
+    }
+     public function resendEmailOtp(Request $request)
+    {
+        $validator = Validator::make(
+            $request->all(),
+            [
+                'email' => 'required|email|exists:users,email',
+            ],
+            [
+                'email.required' => 'Email is required.',
+                'email.email'    => 'Invalid email format.',
+                'email.exists'   => 'User not found.',
+            ]
+        );
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => $validator->errors()->first(),
+            ], 422);
+        }
+
+        $user = User::where('email', $request->email)->first();
+
+        if ($user->email_verified_at) {
+            return response()->json(['message' => 'Email is already verified.'], 400);
+        }
+
+        $emailOtp = rand(100000, 999999);
+        $emailOtpExpiresAt = now()->addMinutes(10);
+
+        $user->update([
+            'email_otp'           => $emailOtp,
+            'email_otp_expires_at'=> $emailOtpExpiresAt,
+        ]);
+
+        sendOTPJOB::dispatch($user);
+
+        return response()->json(['message' => 'A new verification code has been sent to your email.']);
+    }
     public function sendPhoneOtp(Request $request)
         {
 
