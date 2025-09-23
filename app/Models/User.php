@@ -269,7 +269,7 @@ class User extends Authenticatable implements JWTSubject
     // NEW: CS Agent specific scopes
     public function scopeCsAgents($query)
     {
-        return $query->where('role', 'agent')->where('status', 'active');
+        return $query->where('role', 'agent'); // Show all CS agents regardless of status
     }
 
     // NEW: CS Agent specific methods
