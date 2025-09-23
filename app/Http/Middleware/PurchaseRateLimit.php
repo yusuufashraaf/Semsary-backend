@@ -17,7 +17,7 @@ class PurchaseRateLimit
         if ($attempts >= 4) {
             return response()->json([
                 'success' => false,
-                'message' => 'You have reached the maximum of 8 purchase attempts per hour.'
+                'message' => 'You have reached the maximum of 4 purchase attempts per hour.'
             ], 429);
         }
 

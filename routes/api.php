@@ -45,6 +45,8 @@ use App\Http\Controllers\WithdrawalController;
 // Buy Property
 use App\Http\Controllers\PropertyPurchaseController;
 
+//wallet
+use App\Http\Controllers\Api\BalanceApiController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -434,3 +436,6 @@ Route::middleware('auth:api')->group(function () {
 //  Must NOT be behind sanctum, because Paymob’s server calls it
 Route::post('/payment/callback', [PaymentController::class, 'callBack'])
     ->name('payment.callback');
+
+    // Wallet
+    Route::middleware('auth:api')->get('/balance', [BalanceApiController::class, 'show']);
