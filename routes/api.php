@@ -284,7 +284,7 @@ Route::middleware('auth:api')->prefix('user')->group(function () {
     Route::post('/chats/{chat}/read', [MessageController::class, 'markAsRead']);
 });
 
-Route::get('user/reviewable-properties', [ReviewController::class, 'getReviewableProperties']);
+Route::middleware('auth:api')->get('user/reviewable-properties', [ReviewController::class, 'getReviewableProperties']);
 
 Route::middleware('auth:api')->prefix('user/{id}')->group(function ($id) {
     Route::get('/', [UserController::class, 'index']);
