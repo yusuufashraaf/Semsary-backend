@@ -33,33 +33,25 @@ class PaymobPaymentService extends BasePaymentService implements PaymentGatewayI
         $response = $this->buildRequest('POST', '/api/auth/tokens', ['api_key' => $this->api_key]);
         return $response->getData(true)['data']['token'];
     }
-
-   public function sendPayment(Request $request): array
+        public function sendPayment(Request $request):array
     {
-        $userId = $request->input('user_id') ?? auth()->id();
-
+        $this->header['Authorization'] = 'Bearer ' . $this->generateToken();
+        //validate data before sending it
         $data = $request->all();
         $data['api_source'] = "INVOICE";
         $data['integrations'] = $this->integrations_id;
 
         $response = $this->buildRequest('POST', '/api/ecommerce/orders', $data);
-
+        //handel payment response data and return it
         if ($response->getData(true)['success']) {
-            // Save draft payment before redirect
-            \App\Models\Payment::create([
-                'user_id'  => $userId,
-                'status'   => 'pending',
-                'raw_response' => json_encode($response->getData(true)),
-            ]);
 
-            return [
-                'success' => true,
-                'url'     => $response->getData(true)['data']['url']
-            ];
+
+            return ['success' => true, 'url' => $response->getData(true)['data']['url']];
         }
 
-        return ['success' => false];
+        return ['success' => false, 'url' => route('payment.failed')];
     }
+
 
   public function callBack(Request $request): array
 {
@@ -78,7 +70,7 @@ class PaymobPaymentService extends BasePaymentService implements PaymentGatewayI
             ];
         }
     }
-
+    Log::alert('Paymob Callback Response: ' . json_encode($response));
     // Step 2: check status directly from payload
     if (isset($response['success']) && $response['success'] === 'true') {
         $payment = [
