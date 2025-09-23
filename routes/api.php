@@ -46,12 +46,39 @@ use App\Http\Controllers\WithdrawalController;
 use App\Http\Controllers\PropertyPurchaseController;
 
 
+
+
 Route::get('/user', function (Request $request) {
-    return $request->user();
+    return true;//$request->user();
 })->middleware('auth:sanctum');
 
 
 
+use Illuminate\Support\Facades\Broadcast;
+// Route::post('/broadcasting/auth', function (Request $request) {
+//     $user = auth('api')->user();
+//     if ($user) {
+//         return Broadcast::auth($request);
+//     }
+//     return response()->json(['message' => 'Unauthorized'], 402);
+// });
+
+use App\Events\MessageSent;
+// use Illuminate\Support\Facades\Log;
+
+Route::post('/send-message', function (Request $request) {
+    $message = $request->input('message');
+    
+    // Add logging to see if request reaches Laravel
+    //Log::info('Message received: ' . $message);
+    
+    broadcast(new MessageSent($message));
+    
+    return ['status' => 'sent', 'message' => $message];
+});
+
+// Route::post('/broadcasting/auth', [MessageController::class, 'authenticateBroadcast'])
+//     ->middleware('auth:api');
 
 // Public routes
 Route::post('/register', [AuthenticationController::class, 'register']);
@@ -282,6 +309,9 @@ Route::middleware('auth:api')->prefix('user')->group(function () {
     Route::post('/chats/start', [MessageController::class, 'startChat']);
     
     Route::post('/chats/{chat}/read', [MessageController::class, 'markAsRead']);
+    
+    // ADD THIS ROUTE for broadcasting authentication
+    Route::post('/broadcasting/auth', [MessageController::class, 'authenticateBroadcast']);
 });
 
 Route::middleware('auth:api')->get('user/reviewable-properties', [ReviewController::class, 'getReviewableProperties']);
