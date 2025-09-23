@@ -58,7 +58,7 @@ class GoogleAuthController extends Controller
             $refreshToken = Str::random(60);
             $this->storeRefreshToken($user, $refreshToken);
 
-            // Option 1: Redirect with temporary token in URL
+            //  Redirect with temporary token in URL
             // Frontend will exchange this for cookies via API call
             $tempToken = Str::random(32);
             cache()->put('oauth_temp_' . $tempToken, [
