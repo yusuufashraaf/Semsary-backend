@@ -12,6 +12,8 @@ use App\Models\Review;
 use App\Models\Purchase;
 use App\Models\Booking;
 use App\Models\Wishlist;
+use App\Models\PropertyPurchase;
+use App\Models\RentRequest;
 
 class UserController extends Controller
 {
@@ -45,13 +47,13 @@ class UserController extends Controller
     public function purchases(int $id)
     {
 
-        return Purchase::with('property')->where('user_id', $id)->get();
+        return PropertyPurchase::with('property')->where('buyer_id', $id)->get();
     }
 
     public function bookings(int $id)
     {
 
-        return Booking::with('property')->where('user_id', $id)->get();
+        return RentRequest::with('property')->where('user_id', $id)->get();
     }
 
     public function wishlists(int $id)
