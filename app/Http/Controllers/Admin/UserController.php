@@ -282,4 +282,39 @@ class UserController extends Controller
             ], 500);
         }
     }
+public function changeRole(Request $request, int $id): JsonResponse
+{
+    $request->validate([
+        'role' => 'required|string|in:admin,owner,agent,user',
+        'reason' => 'nullable|string|max:255',
+    ]);
+
+    $adminId = auth()->id();
+    $user = User::find($id);
+
+    if (!$user) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'User not found',
+        ], 404);
+    }
+
+    if ($user->id === $adminId) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'You cannot change your own role',
+        ], 403);
+    }
+
+    // ✅ Just update the role in the users table
+    $user->update(['role' => $request->role]);
+
+    return response()->json([
+        'status' => 'success',
+        'message' => "User role updated successfully to {$request->role}",
+        'data'   => new \App\Http\Resources\UserResource($user),
+    ]);
+}
+
+
 }
