@@ -1,70 +1,37 @@
 <?php
-
-// namespace App\Events;
-
-// use Illuminate\Broadcasting\Channel;
-// use Illuminate\Broadcasting\InteractsWithSockets;
-// use Illuminate\Broadcasting\PresenceChannel;
-// use Illuminate\Broadcasting\PrivateChannel;
-// use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
-// use Illuminate\Foundation\Events\Dispatchable;
-// use Illuminate\Queue\SerializesModels;
-// use App\Models\Message;
-
-
-// class MessageSent implements ShouldBroadcast
-// {
-//     use Dispatchable, InteractsWithSockets, SerializesModels;
-
-//     public $message;
-
-//     public function __construct(Message $message)
-//     {
-//         $this->message = $message->load('sender'); // Eager load sender relationship
-//     }
-
-//     public function broadcastOn()
-//     {
-//         return new Channel('chat.' . $this->message->chat_id);
-//     }
-
-//     public function broadcastAs()
-//     {
-//         return 'new.message'; // Consistent event name
-//     }
-
-//     public function broadcastWith()
-//     {
-//         return [
-//             'message' => $this->message
-//         ];
-//     }
-// }
 namespace App\Events;
 
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Queue\SerializesModels;
+use App\Models\Message; // Fixed namespace
 
 class MessageSent implements ShouldBroadcast
 {
-    public $message;
+    use Dispatchable, SerializesModels;
 
-    public function __construct($message)
+    public $message;
+    public $chatId;
+
+    public function __construct($message) // Better parameter name
     {
         $this->message = $message;
+        $this->chatId = $message->chat_id; // Fixed: should be chat_id, not chatid
     }
 
     public function broadcastOn()
     {
-        return new Channel('chat');
+        // Fixed: use string concatenation with dots, not plus sign
+        return new Channel('chat.' . $this->chatId);
     }
 
-    // ADD THIS METHOD to fix the event name
     public function broadcastAs()
     {
-        return 'MessageSent'; // Make sure this matches frontend
+        return 'MessageSent';
     }
 
+    // Add this method to specify what data to broadcast
     public function broadcastWith()
     {
         return [

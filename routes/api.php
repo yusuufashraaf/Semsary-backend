@@ -45,6 +45,8 @@ use App\Http\Controllers\WithdrawalController;
 // Buy Property
 use App\Http\Controllers\PropertyPurchaseController;
 
+use App\Http\Controllers\NewMessageController;
+
 
 
 
@@ -52,33 +54,12 @@ Route::get('/user', function (Request $request) {
     return true;//$request->user();
 })->middleware('auth:sanctum');
 
+//Realtime Messaging
+Route::post('/send-message',[NewMessageController::class,'sendMessage']);
+Route::post('/broadcasting/auth',[NewMessageController::class,'authenticateBroadcast']);
+Route::get('/fetch-messages/{chatId}',[NewMessageController::class,'fetchMessages']);
+Route::get('/fetch-chats/{userId}',[NewMessageController::class,'fetchChats']);
 
-
-use Illuminate\Support\Facades\Broadcast;
-// Route::post('/broadcasting/auth', function (Request $request) {
-//     $user = auth('api')->user();
-//     if ($user) {
-//         return Broadcast::auth($request);
-//     }
-//     return response()->json(['message' => 'Unauthorized'], 402);
-// });
-
-use App\Events\MessageSent;
-// use Illuminate\Support\Facades\Log;
-
-Route::post('/send-message', function (Request $request) {
-    $message = $request->input('message');
-    
-    // Add logging to see if request reaches Laravel
-    //Log::info('Message received: ' . $message);
-    
-    broadcast(new MessageSent($message));
-    
-    return ['status' => 'sent', 'message' => $message];
-});
-
-// Route::post('/broadcasting/auth', [MessageController::class, 'authenticateBroadcast'])
-//     ->middleware('auth:api');
 
 // Public routes
 Route::post('/register', [AuthenticationController::class, 'register']);
