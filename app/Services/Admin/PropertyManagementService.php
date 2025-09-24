@@ -27,8 +27,20 @@ class PropertyManagementService
      */
     public function getFilteredProperties(array $filters): LengthAwarePaginator
     {
-        $query = Property::with(['owner', 'images', 'features', 'reviews', 'bookings'])
-            ->withCount(['bookings', 'reviews']);
+        $query = Property::with([
+            'owner',
+            'images',
+            'features',
+            'reviews',
+            'bookings',
+            'activeAssignment' => function ($query) {
+                $query->with('csAgent:id,first_name,last_name,email');
+            },
+            'currentAssignment' => function ($query) {
+                $query->with('csAgent:id,first_name,last_name,email');
+            }
+        ])
+        ->withCount(['bookings', 'reviews']);
 
         // Apply filters
         if (!empty($filters['status'])) {
@@ -88,6 +100,47 @@ class PropertyManagementService
             $query->whereJsonContains('location->address', $filters['location']);
         }
 
+        // Relationship-based filters
+        if (isset($filters['has_images'])) {
+            if ($filters['has_images']) {
+                $query->has('images');
+            } else {
+                $query->doesntHave('images');
+            }
+        }
+
+        if (isset($filters['has_reviews'])) {
+            if ($filters['has_reviews']) {
+                $query->has('reviews');
+            } else {
+                $query->doesntHave('reviews');
+            }
+        }
+
+        if (isset($filters['has_bookings'])) {
+            if ($filters['has_bookings']) {
+                $query->has('bookings');
+            } else {
+                $query->doesntHave('bookings');
+            }
+        }
+
+        // Additional boolean filters
+        if (isset($filters['featured_only']) && $filters['featured_only']) {
+            $query->where('is_featured', true);
+        }
+
+        if (isset($filters['requires_attention']) && $filters['requires_attention']) {
+            $query->where(function ($q) {
+                $q->where('property_state', 'Pending')
+                  ->orWhereDoesntHave('images')
+                  ->orWhere(function ($subQ) {
+                      $subQ->where('property_state', 'Pending')
+                           ->where('created_at', '<', Carbon::now()->subDays(7));
+                  });
+            });
+        }
+
         // Sorting
         $sortBy = $filters['sort_by'] ?? 'created_at';
         $sortOrder = $filters['sort_order'] ?? 'desc';
@@ -134,13 +187,25 @@ class PropertyManagementService
                       ->limit(10);
             },
             'bookings' => function ($query) {
-                $query->with('user:id,first_name,last_name')
+                $query->with('customer:id,first_name,last_name')
                       ->orderBy('created_at', 'desc')
                       ->limit(10);
             },
             'transactions' => function ($query) {
                 $query->orderBy('created_at', 'desc')
                       ->limit(5);
+            },
+            'activeAssignment' => function ($query) {
+                $query->with([
+                    'csAgent:id,first_name,last_name,email',
+                    'assignedBy:id,first_name,last_name'
+                ]);
+            },
+            'currentAssignment' => function ($query) {
+                $query->with([
+                    'csAgent:id,first_name,last_name,email',
+                    'assignedBy:id,first_name,last_name'
+                ]);
             }
         ])
         ->withCount(['bookings', 'reviews'])

@@ -27,6 +27,7 @@ use App\Http\Controllers\Admin\CSAgentPropertyAssignController;
 use App\Http\Controllers\Admin\CSAgentDashboardController;
 use App\Http\Controllers\Admin\PropertyAssignmentController;
 use App\Http\Controllers\Admin\CsAgentController;
+use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProfileController;
 // CsAgent controller
 use App\Http\Controllers\CsAgent\PropertyController as CsAgentPropertyController;
@@ -35,12 +36,31 @@ use App\Http\Controllers\CsAgent\PropertyDocumentController;
 use App\Http\Controllers\MessageController;
 
 use App\Http\Controllers\Api\CheckoutController;
+use App\Http\Controllers\UserNotificationController;
+use App\Http\Controllers\UserBalanceController;
+
+// Withdraw
+use App\Http\Controllers\WithdrawalController;
+
+// Buy Property
+use App\Http\Controllers\PropertyPurchaseController;
+
+use App\Http\Controllers\NewMessageController;
+
+
+
+//wallet
+use App\Http\Controllers\Api\BalanceApiController;
 
 Route::get('/user', function (Request $request) {
-    return $request->user();
+    return true;//$request->user();
 })->middleware('auth:sanctum');
 
-
+//Realtime Messaging
+Route::post('/send-message',[NewMessageController::class,'sendMessage']);
+Route::post('/broadcasting/auth',[NewMessageController::class,'authenticateBroadcast']);
+Route::get('/fetch-messages/{chatId}',[NewMessageController::class,'fetchMessages']);
+Route::get('/fetch-chats/{userId}',[NewMessageController::class,'fetchChats']);
 
 
 // Public routes
@@ -87,7 +107,27 @@ Route::prefix('propertiesList')->group(function () {
     Route::get('/{id}', [PropertyListController::class, 'show']);
     Route::get('/{id}', [PropertyController::class, 'showAnyone']);
 });
+
+
 // Protected routes
+
+// Property Purchase routes
+
+Route::middleware(['auth:api', 'purchase.limit'])->group(function () {
+    Route::post('/properties/{id}/purchase', [PropertyPurchaseController::class, 'payForOwn']);
+        Route::post('/purchases/{id}/cancel', [PropertyPurchaseController::class, 'cancelPurchase']);
+});
+
+Route::middleware('auth:api')->group(function () {
+    Route::get('/purchases/cancellable', [PropertyPurchaseController::class, 'getUserCancellablePurchases']);
+    Route::get('/purchases', [PropertyPurchaseController::class, 'getAllPurchases']);
+    Route::get('/user/transactions', [PropertyPurchaseController::class, 'getAllUserTransactions']);
+});
+
+
+  // payment
+Route::get('/exchange-payment-token', [PaymentController::class, 'exchangePaymentToken']);
+
 Route::middleware('auth:api')->group(function () {
 
     Route::post('profile', [AuthenticationController::class, 'profile']);
@@ -100,11 +140,13 @@ Route::middleware('auth:api')->group(function () {
 
     Route::post('/user/change-password', [ProfileController::class, 'changePassword']);
 
+    Route::post('/payment/process', [PaymentController::class, 'paymentProcess']);
+
 });
 
 Route::get('/features', [FeatureController::class, 'index']);
 
-Route::middleware(['auth:api', 'role:owner'])->group(function () {
+Route::middleware(['auth:api'])->group(function () {
     //properties
     Route::apiResource('/properties', PropertyController::class);
     //owner dashboard
@@ -164,6 +206,8 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
 
     // SEM-65 CS Agent Management Routes
     Route::get('/cs-agents', [CsAgentController::class, 'index']);
+    Route::get('/cs-agents/{id}', [CsAgentController::class, 'show']);
+    Route::get('/cs-agents/{id}/assignments', [CsAgentController::class, 'getAssignments']);
 
     // SEM-64: CS Agent Dashboard API Implementation
     Route::prefix('cs-agents')->group(function () {
@@ -200,6 +244,15 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
 Route::prefix('cs-agent')->middleware(['auth:api', 'role:agent'])->group(function () {
     // Get assigned properties (task queue)
     Route::get('/properties', [CsAgentPropertyController::class, 'index']);
+
+    // Get detailed view of a specific assigned property
+    Route::get('/properties/{id}', [CsAgentPropertyController::class, 'show']);
+
+    // Get timeline/history for a specific assigned property
+    Route::get('/properties/{property}/timeline', [CsAgentPropertyController::class, 'getTimeline']);
+
+    // Add note to property timeline
+    Route::post('/properties/{property}/notes', [CsAgentPropertyController::class, 'addNote']);
 
     // Update verification status
     Route::patch('/properties/{property}/status', [PropertyVerificationController::class, 'update']);
@@ -249,7 +302,12 @@ Route::middleware('auth:api')->prefix('user')->group(function () {
     Route::post('/chats/start', [MessageController::class, 'startChat']);
     
     Route::post('/chats/{chat}/read', [MessageController::class, 'markAsRead']);
+    
+    // ADD THIS ROUTE for broadcasting authentication
+    Route::post('/broadcasting/auth', [MessageController::class, 'authenticateBroadcast']);
 });
+
+Route::middleware('auth:api')->get('user/reviewable-properties', [ReviewController::class, 'getReviewableProperties']);
 
 Route::middleware('auth:api')->prefix('user/{id}')->group(function ($id) {
     Route::get('/', [UserController::class, 'index']);
@@ -260,6 +318,18 @@ Route::middleware('auth:api')->prefix('user/{id}')->group(function ($id) {
     Route::get('/bookings', [UserController::class, 'bookings']);
     Route::get('/wishlists', [UserController::class, 'wishlists']);
     Route::patch('/notifications/{notificationid}/read', [UserController::class, 'markAsRead']);
+});
+
+
+
+Route::middleware('auth:api')->group(function () {
+    Route::post('/reviews', [ReviewController::class, 'store']);
+    Route::put('/reviews/{review}', [ReviewController::class, 'update']);
+    Route::delete('/reviews/{review}', [ReviewController::class, 'destroy']);
+    Route::get('/properties/{property}/reviews', [ReviewController::class, 'getPropertyReviews']);
+    Route::get('/user/reviewable-properties', [ReviewController::class, 'getReviewableProperties']);
+    Route::get('/users/{user}/reviews', [ReviewController::class, 'getUserReviews']);
+    
 });
 
 
@@ -342,3 +412,52 @@ Route::middleware('auth:api')->group(function () {
 Route::middleware(['auth:api', 'role:admin'])->group(function () {
     Route::post('/system/auto-confirm-checkouts', [CheckoutController::class, 'autoConfirmExpiredCheckouts']);
 });
+
+// User Notification
+Route::middleware('auth:api')->get('/notifications', [UserNotificationController::class, 'getUserNotifications']);
+
+// User Balance
+Route::middleware('auth:api')->get('/balances', [UserBalanceController::class, 'getBalances']);
+
+// Withdraw
+
+Route::middleware(['auth:api'])->group(function () {
+    // Withdrawal routes
+    Route::prefix('withdrawals')->group(function () {
+        Route::get('/info', [WithdrawalController::class, 'getWithdrawalInfo']);
+        Route::post('/request', [WithdrawalController::class, 'requestWithdrawal']);
+        Route::get('/history', [WithdrawalController::class, 'getWithdrawalHistory']);
+    });
+});
+
+
+Route::get('/properties/{id}/unavailable-dates', [RentRequestController::class, 'getUnavailableDates']);
+
+
+// Property Purchase routes (add these to your existing routes)
+Route::middleware('auth:api')->group(function () {
+        
+    // NEW: Get user's purchases only
+    Route::get('/user/purchases', [PropertyPurchaseController::class, 'getUserPurchases']);
+    
+    // NEW: Get user's purchase for specific property
+    Route::get('/properties/{propertyId}/purchase', [PropertyPurchaseController::class, 'getUserPurchaseForProperty']);
+    
+});
+
+// -------------------- WALLET TOP UP --------------------
+Route::middleware('auth:api')->group(function () {
+    // Start a wallet top-up (returns payment_key + iframe url)
+    Route::post('/wallet/topup', [PaymentController::class, 'topUpWallet']);
+
+    // After callback, frontend exchanges temp token for final payment status
+    Route::post('/wallet/exchange-token', [PaymentController::class, 'exchangePaymentToken']);
+});
+
+// -------------------- PAYMOB CALLBACK --------------------
+//  Must NOT be behind sanctum, because Paymob’s server calls it
+Route::post('/payment/callback', [PaymentController::class, 'callBack'])
+    ->name('payment.callback');
+
+    // Wallet
+    Route::middleware('auth:api')->get('/balance', [BalanceApiController::class, 'show']);

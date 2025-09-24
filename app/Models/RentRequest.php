@@ -94,5 +94,9 @@ public function hasCheckout()
 {
     return $this->checkout !== null;
 }
+public function escrow()
+{
+    return $this->hasOne(PropertyEscrow::class, 'property_purchase_id');
+}
 
 }

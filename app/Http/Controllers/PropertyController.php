@@ -28,13 +28,13 @@ class PropertyController extends Controller
     public function index()
     {
         $user = auth('api')->user();
-        if ($user->role === 'owner') {
+        // if ($user->role === 'owner') {
             // $properties = Property::with(['images', 'documents', 'features'])->get();
             $properties = Property::with(['images', 'documents', 'features'])->where('owner_id', $user->id)->get();
             if ($properties->isEmpty()) {
                 return response()->json(['message' => 'No properties found for this owner'], 404);
             }
-        }
+        // }
 
         return response()->json([
             'message' => 'Properties fetched successfully',
@@ -236,7 +236,7 @@ class PropertyController extends Controller
 
         $user = auth('api')->user();
 
-        if ($user->role === 'owner' && $property->owner_id !== $user->id) {
+        if ($property->owner_id !== $user->id) {
             return response()->json([
                 'message' => 'You are not allowed to edit this property'
             ], 403);
@@ -427,7 +427,7 @@ class PropertyController extends Controller
     public function destroy(Property $property): JsonResponse
     {
         $user = auth('api')->user();
-        if ($user->role === 'owner' && $property->owner_id !== $user->id) {
+        if ( $property->owner_id !== $user->id) {
             return response()->json([
                 'message' => 'You are not allowed to delete this property'
             ], 403);

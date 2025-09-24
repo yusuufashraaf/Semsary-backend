@@ -61,8 +61,8 @@ return new class extends Migration
             // Foreign keys
             $table->foreign('rent_request_id')->references('id')->on('rent_requests')->onDelete('cascade');
             $table->foreign('requester_id')->references('id')->on('users')->onDelete('cascade');
-            $table->foreign('refund_purchase_id')->references('id')->on('purchases')->onDelete('set null');
-            $table->foreign('payout_purchase_id')->references('id')->on('purchases')->onDelete('set null');
+            $table->foreign('refund_purchase_id')->references('purchase_id')->on('purchases')->onDelete('set null');
+            $table->foreign('payout_purchase_id')->references('purchase_id')->on('purchases')->onDelete('set null');
 
             // Indexes
             $table->index('status');
