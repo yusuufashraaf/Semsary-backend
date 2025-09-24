@@ -49,6 +49,8 @@ use App\Http\Controllers\NewMessageController;
 
 
 
+//wallet
+use App\Http\Controllers\Api\BalanceApiController;
 
 Route::get('/user', function (Request $request) {
     return true;//$request->user();
@@ -125,7 +127,6 @@ Route::middleware('auth:api')->group(function () {
 
   // payment
 Route::get('/exchange-payment-token', [PaymentController::class, 'exchangePaymentToken']);
-Route::match(['GET','POST'],'/payment/callback', [PaymentController::class, 'callBack']);
 
 Route::middleware('auth:api')->group(function () {
 
@@ -205,6 +206,8 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
 
     // SEM-65 CS Agent Management Routes
     Route::get('/cs-agents', [CsAgentController::class, 'index']);
+    Route::get('/cs-agents/{id}', [CsAgentController::class, 'show']);
+    Route::get('/cs-agents/{id}/assignments', [CsAgentController::class, 'getAssignments']);
 
     // SEM-64: CS Agent Dashboard API Implementation
     Route::prefix('cs-agents')->group(function () {
@@ -241,6 +244,15 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
 Route::prefix('cs-agent')->middleware(['auth:api', 'role:agent'])->group(function () {
     // Get assigned properties (task queue)
     Route::get('/properties', [CsAgentPropertyController::class, 'index']);
+
+    // Get detailed view of a specific assigned property
+    Route::get('/properties/{id}', [CsAgentPropertyController::class, 'show']);
+
+    // Get timeline/history for a specific assigned property
+    Route::get('/properties/{property}/timeline', [CsAgentPropertyController::class, 'getTimeline']);
+
+    // Add note to property timeline
+    Route::post('/properties/{property}/notes', [CsAgentPropertyController::class, 'addNote']);
 
     // Update verification status
     Route::patch('/properties/{property}/status', [PropertyVerificationController::class, 'update']);
@@ -417,3 +429,35 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('/history', [WithdrawalController::class, 'getWithdrawalHistory']);
     });
 });
+
+
+Route::get('/properties/{id}/unavailable-dates', [RentRequestController::class, 'getUnavailableDates']);
+
+
+// Property Purchase routes (add these to your existing routes)
+Route::middleware('auth:api')->group(function () {
+        
+    // NEW: Get user's purchases only
+    Route::get('/user/purchases', [PropertyPurchaseController::class, 'getUserPurchases']);
+    
+    // NEW: Get user's purchase for specific property
+    Route::get('/properties/{propertyId}/purchase', [PropertyPurchaseController::class, 'getUserPurchaseForProperty']);
+    
+});
+
+// -------------------- WALLET TOP UP --------------------
+Route::middleware('auth:api')->group(function () {
+    // Start a wallet top-up (returns payment_key + iframe url)
+    Route::post('/wallet/topup', [PaymentController::class, 'topUpWallet']);
+
+    // After callback, frontend exchanges temp token for final payment status
+    Route::post('/wallet/exchange-token', [PaymentController::class, 'exchangePaymentToken']);
+});
+
+// -------------------- PAYMOB CALLBACK --------------------
+//  Must NOT be behind sanctum, because Paymob’s server calls it
+Route::post('/payment/callback', [PaymentController::class, 'callBack'])
+    ->name('payment.callback');
+
+    // Wallet
+    Route::middleware('auth:api')->get('/balance', [BalanceApiController::class, 'show']);

@@ -27,9 +27,9 @@ class PropertyDocumentController extends Controller
     public function store(Request $request, Property $property): JsonResponse
     {
         $request->validate([
-            'files' => 'required|array|min:1|max:10',
-            'files.*' => 'required|file|mimes:jpg,jpeg,png,pdf,doc,docx|max:10240', // 10MB max
-            'document_type' => 'nullable|string|in:verification_photo,site_visit_report,owner_document,other',
+            'documents' => 'required|array|min:1|max:10',
+            'documents.*' => 'required|file|mimes:jpg,jpeg,png,pdf,doc,docx|max:10240', // 10MB max
+            'document_type' => 'nullable|string|in:verification_photo,site_visit_report,owner_document,verification_report,inspection_notes,other',
             'notes' => 'nullable|string|max:1000'
         ]);
 
@@ -38,23 +38,48 @@ class PropertyDocumentController extends Controller
 
             $user = auth()->user();
 
-            // Check if user has an active assignment for this property
+            // Check if user has any assignment for this property
             $assignment = CSAgentPropertyAssign::where('property_id', $property->id)
                 ->where('cs_agent_id', $user->id)
-                ->whereIn('status', ['pending', 'in_progress'])
                 ->first();
 
             if (!$assignment) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No active assignment found for this property'
+                    'message' => 'No assignment found for this property'
                 ], 404);
+            }
+
+            // Check assignment status and provide appropriate response
+            if ($assignment->status === 'completed') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Assignment is already completed. Cannot upload documents to completed assignments.',
+                    'assignment_status' => 'completed',
+                    'completed_at' => $assignment->completed_at?->toISOString()
+                ], 422);
+            }
+
+            if ($assignment->status === 'rejected') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Assignment has been rejected. Cannot upload documents to rejected assignments.',
+                    'assignment_status' => 'rejected'
+                ], 422);
+            }
+
+            if (!in_array($assignment->status, ['pending', 'in_progress'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Assignment status is not valid for document upload.',
+                    'assignment_status' => $assignment->status
+                ], 422);
             }
 
             $uploadedFiles = [];
             $documentType = $request->input('document_type', 'verification_photo');
 
-            foreach ($request->file('files') as $file) {
+            foreach ($request->file('documents') as $file) {
                 $result = $this->cloudinaryService->uploadFile(
                     $file,
                     'properties/verification-documents',

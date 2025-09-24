@@ -56,10 +56,13 @@ return [
         'key' => env('OPENROUTER_API_KEY'),
     ],
 
-    'paymob' => [
-    'api_key' => env('PAYMOB_API_KEY'),
-    'base_url' => env('PAYMOB_BASE_URL', 'https://accept.paymob.com/api'),
+'paymob' => [
+    'base_url'       => env('PAYMOB_BASE_URL', 'https://accept.paymob.com'),
+    'api_key'        => env('PAYMOB_API_KEY'),
+    'integration_id' => array_map('trim', explode(',', env('PAYMOB_INTEGRATION_ID', ''))),
+    'hmac_secret'    => env('PAYMOB_HMAC_SECRET'),
 ],
+
 
 'paypal' => [
     'client_id' => env('PAYPAL_CLIENT_ID'),
