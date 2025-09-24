@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Events\MessageSent;
 use App\Models\Message;
 use App\Models\Chat;
+use App\Models\RentRequest;
 
 class NewMessageController extends Controller
 {
@@ -43,12 +44,51 @@ class NewMessageController extends Controller
     {
         $chats = Chat::with(['latestMessage', 'property', 'owner', 'renter'])
             ->where('owner_id', $userId)
-            ->orWhere('renter_id', $userId)
+            ->orWhere('renter_id', $userId) 
             ->get();
 
         return response()->json([
             'chats' => $chats,
             'total_unread' => $chats->sum('unread_count')
         ]);
+    }
+
+    public function fetchAvailableChats($userId)
+    {
+// Get completed/paid rent requests
+$rentRequests = RentRequest::where('user_id', $userId)
+    ->whereIn('status', ['completed', 'paid'])
+    ->get();
+
+// Create missing chats
+foreach ($rentRequests as $rentRequest) {
+    $existingChat = Chat::where('property_id', $rentRequest->property_id)
+        ->where(function($query) use ($userId) {
+            $query->where('owner_id', $userId)
+                  ->orWhere('renter_id', $userId);
+        })
+        ->first();
+    
+    if (!$existingChat) {
+        Chat::create([
+            'property_id' => $rentRequest->property_id,
+            'owner_id' => $rentRequest->property->owner_id, // assuming relation
+            'renter_id' => $userId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+}
+
+// Return all chats
+$chats = Chat::with(['latestMessage', 'property', 'owner', 'renter'])
+    ->where('owner_id', $userId)
+    ->orWhere('renter_id', $userId)
+    ->get();
+
+return response()->json([
+    'chats' => $chats,
+    'rent_requests' => $rentRequests
+]);
     }
 }

@@ -61,6 +61,7 @@ Route::post('/send-message',[NewMessageController::class,'sendMessage']);
 Route::post('/broadcasting/auth',[NewMessageController::class,'authenticateBroadcast']);
 Route::get('/fetch-messages/{chatId}',[NewMessageController::class,'fetchMessages']);
 Route::get('/fetch-chats/{userId}',[NewMessageController::class,'fetchChats']);
+Route::get('/fetch-available-chats/{userId}',[NewMessageController::class,'fetchAvailableChats']);
 
 
 // Public routes
