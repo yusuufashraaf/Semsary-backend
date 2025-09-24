@@ -84,6 +84,7 @@ class GoogleAuthController extends Controller
      */
     public function exchangeToken(Request $request)
     {
+         Log::info('Exchange token called', ['token' => $request->token]);
         $request->validate([
             'token' => 'required|string'
         ]);
@@ -102,7 +103,7 @@ class GoogleAuthController extends Controller
             'user' => User::find($tokenData['user_id']),
             'access_token' => $tokenData['access_token'],
             'token_type' => 'bearer',
-            'expires_in' => config('jwt.ttl') * 60
+            'expires_in' => 1 * 60
         ]);
 
         // Also set cookies for subsequent requests
