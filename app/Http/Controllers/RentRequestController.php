@@ -1004,7 +1004,7 @@ public function getUnavailableDates($propertyId)
 {
     try {
         // Define which statuses should block dates
-        $blockingStatuses = ['pending', 'paid']; // add 'approved' if you use it
+        $blockingStatuses = ['paid']; // add 'approved' if you use it
 
         $dates = RentRequest::where('property_id', $propertyId)
             ->whereIn('status', $blockingStatuses)

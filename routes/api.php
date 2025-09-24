@@ -462,3 +462,9 @@ Route::post('/payment/callback', [PaymentController::class, 'callBack'])
 
     // Wallet
     Route::middleware('auth:api')->get('/balance', [BalanceApiController::class, 'show']);
+
+Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
+    Route::prefix('users')->group(function () {
+        Route::post('/{id}/change-role', [\App\Http\Controllers\Admin\UserController::class, 'changeRole']);
+    });
+});
