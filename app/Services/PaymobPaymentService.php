@@ -121,293 +121,321 @@ class PaymobPaymentService extends BasePaymentService
      * - purchase-: property purchase flow (alternate)
      * - rent-: rent payment flow (new)
      */
-    public function callBack(Request $request): array
-    {
-        $response = $request->all();
-        \Log::info('Paymob callback received (service)', $response);
+public function callBack(Request $request): array
+{
+    $response = $request->all();
+    \Log::info('Paymob callback received (service)', $response);
 
-        $obj = $response['obj'] ?? $response['transaction'] ?? $response;
+    $obj = $response['obj'] ?? $response['transaction'] ?? $response;
 
-       
+    $hmacSecret = config('services.paymob.hmac'); 
+$hmac= $response['hmac'] ?? null;
 
-        if (!isset($obj['success']) || $obj['success'] !== true) {
-            return ['success' => false, 'message' => 'Payment failed'];
+if (!$hmac) {
+    return ['success' => false, 'message' => 'Missing HMAC'];
+}
+
+$concatenatedString =
+    ($obj['amount_cents'] ?? '') .
+    ($obj['created_at'] ?? '') .
+    ($obj['currency'] ?? '') .
+    ($obj['error_occured'] ?? '') .
+    ($obj['has_parent_transaction'] ?? '') .
+    ($obj['id'] ?? '') .
+    ($obj['integration_id'] ?? '') .
+    ($obj['is_3d_secure'] ?? '') .
+    ($obj['is_auth'] ?? '') .
+    ($obj['is_capture'] ?? '') .
+    ($obj['is_refunded'] ?? '') .
+    ($obj['is_standalone_payment'] ?? '') .
+    ($obj['is_voided'] ?? '') .
+    ($obj['order']['id'] ?? '') .
+    ($obj['owner'] ?? '') .
+    ($obj['pending'] ?? '') .
+    ($obj['source_data']['pan'] ?? '') .
+    ($obj['source_data']['sub_type'] ?? '') .
+    ($obj['source_data']['type'] ?? '') .
+    ($obj['success'] ?? '');
+
+$calculatedHmac = hash_hmac('sha512', $concatenatedString, $hmacSecret);
+
+if ($calculatedHmac !== $hmac) {
+    \Log::warning('Paymob callback: HMAC mismatch', [
+        'expected' => $calculatedHmac,
+        'provided' => $hmac,
+    ]);
+    return ['success' => false, 'message' => 'Invalid HMAC'];
+}
+
+
+    $amount          = ($obj['amount_cents'] ?? 0) / 100;
+    $merchantOrderId = $obj['order']['merchant_order_id'] ?? $obj['merchant_order_id'] ?? null;
+
+    if (!$merchantOrderId) {
+        return ['success' => false, 'message' => 'Missing merchant_order_id'];
+    }
+
+    // ----------------------------
+    // ✅ WALLET TOPUP
+    // ----------------------------
+    if (str_starts_with($merchantOrderId, 'wallet-')) {
+        $parts = explode('-', $merchantOrderId);
+        $userId = intval($parts[1] ?? 0);
+        $user   = User::find($userId);
+        if (!$user) {
+            return ['success' => false, 'message' => 'User not found'];
         }
 
-        $amount = ($obj['amount_cents'] ?? 0) / 100;
-        $merchantOrderId = $obj['order']['merchant_order_id'] ?? $obj['merchant_order_id'] ?? null;
+        DB::transaction(function () use ($user, $amount, $obj) {
+            $wallet = Wallet::lockForUpdate()->firstOrCreate(['user_id' => $user->id], ['balance' => 0]);
+            $before = $wallet->balance;
+            $wallet->increment('balance', $amount);
 
-        if (!$merchantOrderId) {
-            return ['success' => false, 'message' => 'Missing merchant_order_id'];
-        }
+            WalletTransaction::create([
+                'wallet_id'      => $wallet->id,
+                'amount'         => $amount,
+                'type'           => 'topup',
+                'ref_id'         => $obj['id'] ?? null,
+                'ref_type'       => 'paymob',
+                'description'    => 'Wallet top-up via Paymob',
+                'balance_before' => $before,
+                'balance_after'  => $wallet->balance,
+            ]);
+        });
 
-        // WALLET TOPUP: format wallet-{userId}-{uniq}
-        if (str_starts_with($merchantOrderId, 'wallet-')) {
-            $parts = explode('-', $merchantOrderId);
-            $userId = intval($parts[1] ?? 0);
-            $user = User::find($userId);
-            if (!$user) {
-                return ['success' => false, 'message' => 'User not found'];
+        return ['success' => true, 'message' => 'Wallet topped up successfully', 'amount' => $amount];
+    }
+
+    // ----------------------------
+    // ✅ PROPERTY PURCHASE (buy-/purchase-)
+    // ----------------------------
+    if (str_starts_with($merchantOrderId, 'buy-') || str_starts_with($merchantOrderId, 'purchase-')) {
+        try {
+            if (str_starts_with($merchantOrderId, 'buy-')) {
+                $parts     = explode('-', $merchantOrderId);
+                $propertyId = intval($parts[1] ?? 0);
+                $userId     = intval($parts[2] ?? 0);
+
+                $purchase = PropertyPurchase::where('property_id', $propertyId)
+                    ->where('buyer_id', $userId)
+                    ->whereIn('status', ['pending', 'pending_payment', 'pending'])
+                    ->latest()
+                    ->first();
+
+                if (!$purchase) {
+                    $purchase = PropertyPurchase::where('transaction_ref', $merchantOrderId)->first();
+                }
+
+                if (!$purchase) {
+                    return ['success' => false, 'message' => 'Property purchase not found or already processed'];
+                }
+
+                DB::transaction(function () use ($purchase, $obj) {
+                    $purchase->update([
+                        'status'          => 'paid',
+                        'transaction_ref' => $obj['id'] ?? $purchase->transaction_ref,
+                        'metadata'        => array_merge($purchase->metadata ?? [], ['paymob_txn' => $obj]),
+                    ]);
+
+                    PropertyEscrow::create([
+                        'property_purchase_id' => $purchase->id,
+                        'property_id'          => $purchase->property_id,
+                        'buyer_id'             => $purchase->buyer_id,
+                        'seller_id'            => $purchase->seller_id,
+                        'amount'               => $purchase->amount,
+                        'status'               => 'locked',
+                        'locked_at'            => now(),
+                        'scheduled_release_at' => now()->addHours(24),
+                    ]);
+
+                    $purchase->property->update([
+                        'property_state'   => 'Invalid',
+                        'pending_buyer_id' => $purchase->buyer_id,
+                    ]);
+
+                    try {
+                        \Notification::send($purchase->buyer, new \App\Notifications\PropertyPurchaseInitiated($purchase));
+                        \Notification::send($purchase->seller, new \App\Notifications\PurchaseInitiatedSeller($purchase));
+                    } catch (\Exception $e) {
+                        \Log::warning('Notification failed on Paymob callback (buy)', ['error' => $e->getMessage()]);
+                    }
+                });
+
+                return ['success' => true, 'message' => 'Property purchase confirmed', 'purchase_id' => $purchase->id];
             }
 
-            DB::transaction(function () use ($user, $amount, $obj) {
-                $wallet = Wallet::lockForUpdate()->firstOrCreate(['user_id' => $user->id], ['balance' => 0]);
-                $before = $wallet->balance;
-                $wallet->increment('balance', $amount);
+            if (str_starts_with($merchantOrderId, 'purchase-')) {
+                $purchaseId = intval(str_replace('purchase-', '', $merchantOrderId));
+                $purchase   = PropertyPurchase::with('property', 'buyer', 'seller')->find($purchaseId);
+                if (!$purchase) {
+                    return ['success' => false, 'message' => 'Purchase not found'];
+                }
 
-                WalletTransaction::create([
-                    'wallet_id' => $wallet->id,
-                    'amount' => $amount,
-                    'type' => 'topup',
-                    'ref_id' => $obj['id'] ?? null,
-                    'ref_type' => 'paymob',
-                    'description' => 'Wallet top-up via Paymob',
-                    'balance_before' => $before,
-                    'balance_after' => $wallet->balance,
-                ]);
-            });
+                DB::transaction(function () use ($purchase, $obj) {
+                    if (in_array($purchase->status, ['pending', 'pending_payment'])) {
+                        $buyer  = $purchase->buyer;
+                        $wallet = Wallet::lockForUpdate()->firstOrCreate(['user_id' => $buyer->id], ['balance' => 0]);
+                        $walletUsed = $purchase->metadata['wallet_to_use'] ?? 0;
+                        if ($walletUsed > 0) {
+                            $before = $wallet->balance;
+                            $wallet->decrement('balance', $walletUsed);
+                            WalletTransaction::create([
+                                'wallet_id'      => $wallet->id,
+                                'amount'         => -$walletUsed,
+                                'type'           => 'purchase_partial',
+                                'ref_id'         => $purchase->id,
+                                'ref_type'       => 'property_purchase',
+                                'description'    => 'Partial payment from wallet',
+                                'balance_before' => $before,
+                                'balance_after'  => $wallet->balance,
+                            ]);
+                        }
 
-            return ['success' => true, 'message' => 'Wallet topped up successfully', 'amount' => $amount];
-        }
-
-        // PROPERTY PURCHASE FLOWS (existing 'buy-' or 'purchase-') - keep current behaviour
-        if (str_starts_with($merchantOrderId, 'buy-') || str_starts_with($merchantOrderId, 'purchase-')) {
-            // Try both PropertyPurchase and generic Purchase handling
-            try {
-                // Handle property purchase saved in PropertyPurchase
-                if (str_starts_with($merchantOrderId, 'buy-')) {
-                    $parts = explode('-', $merchantOrderId);
-                    $propertyId = intval($parts[1] ?? 0);
-                    $userId = intval($parts[2] ?? 0);
-
-                    $purchase = PropertyPurchase::where('property_id', $propertyId)
-                        ->where('buyer_id', $userId)
-                        ->whereIn('status', ['pending', 'pending_payment', 'pending'])
-                        ->latest()
-                        ->first();
-
-                    if (!$purchase) {
-                        // fallback: try to find by merchant_order in metadata
-                        $purchase = PropertyPurchase::where('transaction_ref', $merchantOrderId)->first();
-                    }
-
-                    if (!$purchase) {
-                        return ['success' => false, 'message' => 'Property purchase not found or already processed'];
-                    }
-
-                    DB::transaction(function () use ($purchase, $obj) {
                         $purchase->update([
-                            'status' => 'paid',
-                            'transaction_ref' => $obj['id'] ?? $purchase->transaction_ref,
-                            'metadata' => array_merge($purchase->metadata ?? [], ['paymob_txn' => $obj]),
+                            'status'                => 'paid',
+                            'transaction_ref'       => $obj['id'] ?? $purchase->transaction_ref,
+                            'cancellation_deadline' => now()->addHours(24),
+                        ]);
+
+                        $purchase->property->update([
+                            'property_state'   => 'Invalid',
+                            'pending_buyer_id' => $purchase->buyer_id,
                         ]);
 
                         PropertyEscrow::create([
                             'property_purchase_id' => $purchase->id,
-                            'property_id' => $purchase->property_id,
-                            'buyer_id' => $purchase->buyer_id,
-                            'seller_id' => $purchase->seller_id,
-                            'amount' => $purchase->amount,
-                            'status' => 'locked',
-                            'locked_at' => now(),
+                            'property_id'          => $purchase->property_id,
+                            'buyer_id'             => $purchase->buyer_id,
+                            'seller_id'            => $purchase->seller_id,
+                            'amount'               => $purchase->amount,
+                            'status'               => 'locked',
+                            'locked_at'            => now(),
                             'scheduled_release_at' => now()->addHours(24),
                         ]);
-
-                        $purchase->property->update([
-                            'property_state' => 'Invalid',
-                            'pending_buyer_id' => $purchase->buyer_id,
-                        ]);
-
-                        try {
-                            \Notification::send($purchase->buyer, new \App\Notifications\PropertyPurchaseInitiated($purchase));
-                            \Notification::send($purchase->seller, new \App\Notifications\PurchaseInitiatedSeller($purchase));
-                        } catch (\Exception $e) {
-                            \Log::warning('Notification failed on Paymob callback (buy)', ['error' => $e->getMessage()]);
-                        }
-                    });
-
-                    return ['success' => true, 'message' => 'Property purchase confirmed', 'purchase_id' => $purchase->id];
-                }
-
-                // fallback for generic "purchase-" if used elsewhere (keep original PaymentController semantics)
-                if (str_starts_with($merchantOrderId, 'purchase-')) {
-                    $purchaseId = intval(str_replace('purchase-', '', $merchantOrderId));
-                    $purchase = \App\Models\PropertyPurchase::with('property', 'buyer', 'seller')->find($purchaseId);
-                    if (!$purchase) {
-                        return ['success' => false, 'message' => 'Purchase not found'];
-                    }
-                    // perform the same processing as above if still pending...
-                    DB::transaction(function () use ($purchase, $obj) {
-                        if (in_array($purchase->status, ['pending', 'pending_payment'])) {
-                            $buyer = $purchase->buyer;
-                            $wallet = Wallet::lockForUpdate()->firstOrCreate(['user_id' => $buyer->id], ['balance' => 0]);
-                            $walletUsed = $purchase->metadata['wallet_to_use'] ?? 0;
-                            if ($walletUsed > 0) {
-                                $before = $wallet->balance;
-                                $wallet->decrement('balance', $walletUsed);
-                                WalletTransaction::create([
-                                    'wallet_id' => $wallet->id,
-                                    'amount' => -$walletUsed,
-                                    'type' => 'purchase_partial',
-                                    'ref_id' => $purchase->id,
-                                    'ref_type' => 'property_purchase',
-                                    'description' => 'Partial payment from wallet',
-                                    'balance_before' => $before,
-                                    'balance_after' => $wallet->balance,
-                                ]);
-                            }
-                            $purchase->update([
-                                'status' => 'paid',
-                                'transaction_ref' => $obj['id'] ?? $purchase->transaction_ref,
-                                'cancellation_deadline' => now()->addHours(24),
-                            ]);
-                            $purchase->property->update(['property_state' => 'Invalid', 'pending_buyer_id' => $purchase->buyer_id]);
-                            PropertyEscrow::create([
-                                'property_purchase_id' => $purchase->id,
-                                'property_id' => $purchase->property_id,
-                                'buyer_id' => $purchase->buyer_id,
-                                'seller_id' => $purchase->seller_id,
-                                'amount' => $purchase->amount,
-                                'status' => 'locked',
-                                'locked_at' => now(),
-                                'scheduled_release_at' => now()->addHours(24),
-                            ]);
-                        }
-                    });
-
-                    // return success
-                    return ['success' => true, 'message' => 'Property purchase processed (purchase-)', 'purchase_id' => $purchase->id];
-                }
-            } catch (\Throwable $e) {
-                \Log::error('Error processing buy/purchase callback: ' . $e->getMessage());
-                return ['success' => false, 'message' => 'Processing error'];
-            }
-        }
-
-        // RENT FLOW: merchant id format "rent-{rentRequestId}-{userId}-{uniq}"
-        if (str_starts_with($merchantOrderId, 'rent-')) {
-            $parts = explode('-', $merchantOrderId);
-            $rentRequestId = intval($parts[1] ?? 0);
-            $userId = intval($parts[2] ?? 0);
-
-            // Attempt to find the Purchase record from metadata or by rent_request_id
-            $purchaseIdFromMeta = $obj['order']['id'] ?? null;
-            $purchase = null;
-
-            // 1) Try to find a dedicated Purchase created when initiating rent
-            $purchase = Purchase::where('rent_request_id', $rentRequestId)
-                ->where('user_id', $userId)
-                ->whereIn('status', ['pending', 'pending_payment', 'pending'])
-                ->latest()
-                ->first();
-
-            // 2) Fallback: try to find by transaction ref (merchant id) or metadata in purchase table
-            if (!$purchase) {
-                $purchase = Purchase::where('transaction_id', $merchantOrderId)
-                    ->orWhere('transaction_ref', $merchantOrderId)
-                    ->first();
-            }
-
-            if (!$purchase) {
-                // No purchase record: create a minimal one so we can continue (defensive)
-                $rentRequest = RentRequest::find($rentRequestId);
-                if (!$rentRequest) {
-                    return ['success' => false, 'message' => 'Rent request not found'];
-                }
-                $purchase = Purchase::create([
-                    'user_id' => $userId,
-                    'property_id' => $rentRequest->property_id,
-                    'rent_request_id' => $rentRequest->id,
-                    'amount' => $rentRequest->total_price ?? ($rentRequest->nights * $rentRequest->price_per_night),
-                    'deposit_amount' => $rentRequest->price_per_night ?? 0,
-                    'payment_type' => 'rent',
-                    'status' => 'pending',
-                    'payment_gateway' => 'paymob',
-                    'idempotency_key' => uniqid('rent_'),
-                    'transaction_ref' => $merchantOrderId,
-                    'metadata' => ['flow' => 'rent', 'merchant_order_id' => $merchantOrderId],
-                ]);
-            }
-
-            // Process payment inside transaction
-            try {
-                DB::transaction(function () use ($purchase, $obj, $amount) {
-                    // Deduct wallet portion if present in purchase metadata
-                    $walletToUse = $purchase->metadata['wallet_to_use'] ?? 0;
-                    if ($walletToUse > 0) {
-                        $wallet = Wallet::lockForUpdate()->firstOrCreate(['user_id' => $purchase->user_id], ['balance' => 0]);
-                        $before = $wallet->balance;
-                        if ($wallet->balance < $walletToUse) {
-                            // wallet shortfall - this is unexpected, but we'll attempt to deduct what exists
-                            $walletToUse = min($wallet->balance, $walletToUse);
-                        }
-                        if ($walletToUse > 0) {
-                            $wallet->decrement('balance', $walletToUse);
-                            WalletTransaction::create([
-                                'wallet_id' => $wallet->id,
-                                'amount' => -$walletToUse,
-                                'type' => 'rent_partial',
-                                'ref_id' => $purchase->id,
-                                'ref_type' => 'purchase',
-                                'description' => 'Partial rent payment from wallet',
-                                'balance_before' => $before,
-                                'balance_after' => $wallet->balance,
-                            ]);
-                        }
-                    }
-
-                    // Update purchase status
-                    $purchase->update([
-                        'status' => 'paid',
-                        'transaction_id' => $obj['id'] ?? $purchase->transaction_id,
-                        'metadata' => array_merge($purchase->metadata ?? [], ['paymob_txn' => $obj]),
-                    ]);
-
-                    // Create escrow record if not exists
-                    $rentRequest = RentRequest::lockForUpdate()->find($purchase->rent_request_id);
-                    $rentAmount = $purchase->amount - ($purchase->deposit_amount ?? 0);
-                    $depositAmount = $purchase->deposit_amount ?? ($rentRequest->price_per_night ?? 0);
-                    $totalAmount = $purchase->amount;
-
-                    $escrow = EscrowBalance::firstOrCreate(
-                        ['rent_request_id' => $purchase->rent_request_id],
-                        [
-                            'user_id' => $purchase->user_id,
-                            'rent_amount' => $rentAmount,
-                            'deposit_amount' => $depositAmount,
-                            'total_amount' => $totalAmount,
-                            'status' => 'locked',
-                            'locked_at' => now(),
-                        ]
-                    );
-
-                    // Mark rent request as paid
-                    if ($rentRequest && $rentRequest->status !== 'paid') {
-                        $rentRequest->update(['status' => 'paid']);
-                    }
-
-                    // Optionally dispatch release job (when check_in passes)
-                    // \App\Jobs\ReleaseRentJob::dispatch($rentRequest->id)->delay(Carbon::parse($rentRequest->check_in)->addDay());
-
-                    // Notify participants
-                    try {
-                        Notification::send($rentRequest->property->owner, new \App\Notifications\RentPaidByRenter($rentRequest));
-                        Notification::send($rentRequest->user, new \App\Notifications\RentPaymentSuccessful($rentRequest));
-                    } catch (\Exception $e) {
-                        Log::warning('Notifications failed on rent callback', ['error' => $e->getMessage()]);
                     }
                 });
 
-                return ['success' => true, 'message' => 'Rent payment processed', 'rent_request_id' => $purchase->rent_request_id, 'purchase_id' => $purchase->id];
-            } catch (\Throwable $e) {
-                Log::error('Error processing rent callback: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
-                return ['success' => false, 'message' => 'Processing rent payment failed'];
+                return ['success' => true, 'message' => 'Property purchase processed (purchase-)', 'purchase_id' => $purchase->id];
             }
+        } catch (\Throwable $e) {
+            \Log::error('Error processing buy/purchase callback: ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Processing error'];
         }
-
-        return ['success' => false, 'message' => 'Unknown flow'];
     }
 
+    // ----------------------------
+    // ✅ RENT FLOW (rent-)
+    // ----------------------------
+    if (str_starts_with($merchantOrderId, 'rent-')) {
+        $parts        = explode('-', $merchantOrderId);
+        $rentRequestId = intval($parts[1] ?? 0);
+        $userId        = intval($parts[2] ?? 0);
+
+        $purchase = Purchase::where('rent_request_id', $rentRequestId)
+            ->where('user_id', $userId)
+            ->whereIn('status', ['pending', 'pending_payment', 'pending'])
+            ->latest()
+            ->first();
+
+        if (!$purchase) {
+            $purchase = Purchase::where('transaction_id', $merchantOrderId)
+                ->orWhere('transaction_ref', $merchantOrderId)
+                ->first();
+        }
+
+        if (!$purchase) {
+            $rentRequest = RentRequest::find($rentRequestId);
+            if (!$rentRequest) {
+                return ['success' => false, 'message' => 'Rent request not found'];
+            }
+            $purchase = Purchase::create([
+                'user_id'        => $userId,
+                'property_id'    => $rentRequest->property_id,
+                'rent_request_id'=> $rentRequest->id,
+                'amount'         => $rentRequest->total_price ?? ($rentRequest->nights * $rentRequest->price_per_night),
+                'deposit_amount' => $rentRequest->price_per_night ?? 0,
+                'payment_type'   => 'rent',
+                'status'         => 'pending',
+                'payment_gateway'=> 'paymob',
+                'idempotency_key'=> uniqid('rent_'),
+                'transaction_ref'=> $merchantOrderId,
+                'metadata'       => ['flow' => 'rent', 'merchant_order_id' => $merchantOrderId],
+            ]);
+        }
+
+        try {
+            DB::transaction(function () use ($purchase, $obj, $amount) {
+                $walletToUse = $purchase->metadata['wallet_to_use'] ?? 0;
+                if ($walletToUse > 0) {
+                    $wallet = Wallet::lockForUpdate()->firstOrCreate(['user_id' => $purchase->user_id], ['balance' => 0]);
+                    $before = $wallet->balance;
+                    if ($wallet->balance < $walletToUse) {
+                        $walletToUse = min($wallet->balance, $walletToUse);
+                    }
+                    if ($walletToUse > 0) {
+                        $wallet->decrement('balance', $walletToUse);
+                        WalletTransaction::create([
+                            'wallet_id'      => $wallet->id,
+                            'amount'         => -$walletToUse,
+                            'type'           => 'rent_partial',
+                            'ref_id'         => $purchase->id,
+                            'ref_type'       => 'purchase',
+                            'description'    => 'Partial rent payment from wallet',
+                            'balance_before' => $before,
+                            'balance_after'  => $wallet->balance,
+                        ]);
+                    }
+                }
+
+                $purchase->update([
+                    'status'         => 'paid',
+                    'transaction_id' => $obj['id'] ?? $purchase->transaction_id,
+                    'metadata'       => array_merge($purchase->metadata ?? [], ['paymob_txn' => $obj]),
+                ]);
+
+                $rentRequest   = RentRequest::lockForUpdate()->find($purchase->rent_request_id);
+                $rentAmount    = $purchase->amount - ($purchase->deposit_amount ?? 0);
+                $depositAmount = $purchase->deposit_amount ?? ($rentRequest->price_per_night ?? 0);
+                $totalAmount   = $purchase->amount;
+
+                $escrow = EscrowBalance::firstOrCreate(
+                    ['rent_request_id' => $purchase->rent_request_id],
+                    [
+                        'user_id'       => $purchase->user_id,
+                        'rent_amount'   => $rentAmount,
+                        'deposit_amount'=> $depositAmount,
+                        'total_amount'  => $totalAmount,
+                        'status'        => 'locked',
+                        'locked_at'     => now(),
+                    ]
+                );
+
+                if ($rentRequest && $rentRequest->status !== 'paid') {
+                    $rentRequest->update(['status' => 'paid']);
+                }
+
+                try {
+                    Notification::send($rentRequest->property->owner, new \App\Notifications\RentPaidByRenter($rentRequest));
+                    Notification::send($rentRequest->user, new \App\Notifications\RentPaymentSuccessful($rentRequest));
+                } catch (\Exception $e) {
+                    Log::warning('Notifications failed on rent callback', ['error' => $e->getMessage()]);
+                }
+            });
+
+            return [
+                'success'         => true,
+                'message'         => 'Rent payment processed',
+                'rent_request_id' => $purchase->rent_request_id,
+                'purchase_id'     => $purchase->id,
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Error processing rent callback: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            return ['success' => false, 'message' => 'Processing rent payment failed'];
+        }
+    }
+
+    return ['success' => false, 'message' => 'Unknown flow'];
+}
 
     /**
      * Create payment key.
