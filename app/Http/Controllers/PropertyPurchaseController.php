@@ -128,26 +128,55 @@ public function payForOwn(Request $request, $id)
                 ['user_id' => $user->id],
                 ['balance' => 0]
             );
-
             $walletBalance = $wallet->balance;
+
+            // ✅ Always generate merchant_order_id
+            $merchantOrderId = 'buy-' . $property->id . '-' . $user->id . '-' . Str::uuid()->toString();
 
             if ($walletBalance < $totalAmount) {
                 // Not enough balance → Paymob flow
                 $shortfall = $totalAmount - $walletBalance;
 
+                // Create pending purchase entry
+                $purchase = PropertyPurchase::create([
+                    'property_id'       => $property->id,
+                    'buyer_id'          => $user->id,
+                    'seller_id'         => $property->owner_id,
+                    'amount'            => $totalAmount,
+                    'status'            => 'pending',
+                    'payment_gateway'   => 'paymob',
+                    'transaction_ref'   => null,
+                    'idempotency_key'   => $idempotencyKey,
+                    'merchant_order_id' => $merchantOrderId,
+                    'metadata'          => [
+                        'wallet_to_use'  => $walletBalance,
+                        'payment_method' => 'wallet+paymob',
+                    ],
+                ]);
+
                 $paymob = app(\App\Services\PaymobPaymentService::class);
+
+                // ❌ OLD: createOrder()  (don’t use it)
+                // ✅ FIX: just call createPaymentKey with merchant_order_id
                 $paymentKey = $paymob->createPaymentKey([
                     'amount_cents' => intval($shortfall * 100),
                     'currency'     => 'EGP',
                     'user'         => $user,
+                    'idempotency_key' => $idempotencyKey,
                     'metadata'     => [
                         'property_id'    => $property->id,
                         'buyer_id'       => $user->id,
                         'seller_id'      => $property->owner_id,
                         'wallet_to_use'  => $walletBalance,
                         'idempotency_key'=> $idempotencyKey,
-                        'flow'           => 'property_purchase',
+                        'flow'           => 'buy',
+                        'merchant_order_id' => $merchantOrderId, // ✅ pass to service
                     ],
+                ]);
+
+                // ✅ Save Paymob order id from token response, if available
+                $purchase->update([
+                    'paymob_order_id' => $merchantOrderId,
                 ]);
 
                 return $this->success('Redirecting to Paymob for remaining balance.', [
@@ -162,34 +191,34 @@ public function payForOwn(Request $request, $id)
             $wallet->decrement('balance', $totalAmount);
 
             $purchase = PropertyPurchase::create([
-                'property_id'     => $property->id,
-                'buyer_id'        => $user->id,
-                'seller_id'       => $property->owner_id,
-                'amount'          => $totalAmount,
-                'status'          => 'paid',
-                'payment_gateway' => 'wallet',
-                'transaction_ref' => Str::uuid()->toString(),
-                'idempotency_key' => $idempotencyKey,
-                'metadata'        => [
+                'property_id'       => $property->id,
+                'buyer_id'          => $user->id,
+                'seller_id'         => $property->owner_id,
+                'amount'            => $totalAmount,
+                'status'            => 'paid',
+                'payment_gateway'   => 'wallet',
+                'transaction_ref'   => Str::uuid()->toString(),
+                'idempotency_key'   => $idempotencyKey,
+                'merchant_order_id' => $merchantOrderId,
+                'metadata'          => [
                     'wallet_to_use'  => $totalAmount,
                     'payment_method' => 'wallet',
                 ],
             ]);
 
-            //  Always create escrow
+            // Always create escrow
             $escrow = PropertyEscrow::create([
-                'property_purchase_id'         => $purchase->id,
-                    'property_id'          => $property->id,   
-
-                'buyer_id'            => $user->id,
-                'seller_id'           => $property->owner_id,
-                'amount'              => $totalAmount,
-                'status'              => 'locked',
-                'locked_at'           => now(),
-                'scheduled_release_at'=> now()->addDays(3), // configurable cancellation window
+                'property_purchase_id'  => $purchase->id,
+                'property_id'           => $property->id,
+                'buyer_id'              => $user->id,
+                'seller_id'             => $property->owner_id,
+                'amount'                => $totalAmount,
+                'status'                => 'locked',
+                'locked_at'             => now(),
+                'scheduled_release_at'  => now()->addDays(3),
             ]);
 
-            // 🔔 Send notifications (buyer & seller)
+            // 🔔 Notifications
             try {
                 $buyerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
                 \Notification::send($user, $buyerNotification);

@@ -53,6 +53,8 @@ use App\Http\Controllers\Admin\AdminChatController;
 //wallet
 use App\Http\Controllers\Api\BalanceApiController;
 
+use App\Http\Controllers\PaymobCallbackController;
+
 Route::get('/user', function (Request $request) {
     return true;//$request->user();
 })->middleware('auth:sanctum');
@@ -484,3 +486,6 @@ Route::middleware(['auth:api', 'role:admin'])
         Route::post('/{id}/unassign', [AdminChatController::class, 'unassign']); // Unassign agent
         Route::get('/agents', [AdminChatController::class, 'agents']); // Just list agents
     });
+
+    Route::post('/payment/callback', [PaymobCallbackController::class, 'handle']);
+
