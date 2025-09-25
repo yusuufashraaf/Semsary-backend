@@ -459,10 +459,6 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/wallet/exchange-token', [PaymentController::class, 'exchangePaymentToken']);
 });
 
-// -------------------- PAYMOB CALLBACK --------------------
-//  Must NOT be behind sanctum, because Paymob’s server calls it
-Route::post('/payment/callback', [PaymentController::class, 'callBack'])
-    ->name('payment.callback');
 
     // Wallet
     Route::middleware('auth:api')->get('/balance', [BalanceApiController::class, 'show']);
