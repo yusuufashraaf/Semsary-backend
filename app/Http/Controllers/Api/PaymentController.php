@@ -7,6 +7,9 @@ use App\Services\PaymobPaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use App\Models\User;
+use App\Models\PropertyEscrow;
+use App\Models\EscrowBalance;
 
 class PaymentController extends Controller
 {

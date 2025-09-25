@@ -128,7 +128,7 @@ public function callBack(Request $request): array
 
     $obj = $response['obj'] ?? $response['transaction'] ?? $response;
 
-    $hmacSecret = config('services.paymob.hmac'); 
+    $hmacSecret = config('services.paymob.hmac_secret'); 
 $hmac= $response['hmac'] ?? null;
 
 if (!$hmac) {
