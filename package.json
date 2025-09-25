@@ -7,7 +7,6 @@
         "dev": "vite"
     },
     "devDependencies": {
-        "@rollup/rollup-win32-x64-msvc": "^4.52.2",
         "@tailwindcss/vite": "^4.0.0",
         "axios": "^1.11.0",
         "concurrently": "^9.0.1",
