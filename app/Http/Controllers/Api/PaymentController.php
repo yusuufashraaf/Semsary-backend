@@ -17,6 +17,20 @@ class PaymentController extends Controller
         $this->paymob = $paymob;
     }
 
+    public function handle(Request $request)
+    {
+        Log::info('Paymob callback received', $request->all());
+
+        $result = app(PaymobPaymentService::class)->callBack($request->all());
+
+        if (!$result['success']) {
+            return response()->json($result, 400);
+        }
+
+        return response()->json(['message' => 'Callback handled successfully']);
+    }
+
+
     // -------------------- TOP UP WALLET --------------------
     public function topUpWallet(Request $request)
     {
@@ -47,9 +61,73 @@ public function callBack(Request $request): array
 
     $obj = $response['obj'] ?? $response['transaction'] ?? $response;
 
-    // ✅ Skip HMAC validation completely
+    // ----------------------------
+    // HMAC VALIDATION
+    // ----------------------------
+// Get secret
+$hmacSecret = config('services.paymob.hmac_secret');
 
+// The received HMAC
+$hmac = $response['hmac'] ?? null;
+if (!$hmac) {
+    return ['success' => false, 'message' => 'Missing HMAC'];
+}
+
+// Concatenate fields in EXACT order from Paymob docs
+$fields = [
+    'amount_cents',
+    'created_at',
+    'currency',
+    'error_occured',
+    'has_parent_transaction',
+    'id',
+    'integration_id',
+    'is_3d_secure',
+    'is_auth',
+    'is_capture',
+    'is_refunded',
+    'is_standalone_payment',
+    'is_voided',
+    'order.id',
+    'owner',
+    'pending',
+    'source_data.pan',
+    'source_data.sub_type',
+    'source_data.type',
+    'success',
+];
+
+$concatenatedString = '';
+foreach ($fields as $field) {
+    // Handle nested keys like "order.id"
+    $keys = explode('.', $field);
+    $value = $obj;
+    foreach ($keys as $k) {
+        $value = $value[$k] ?? '';
+    }
+
+    // Cast booleans/nulls to string
+    if (is_bool($value)) {
+        $value = $value ? 'true' : 'false';
+    }
+    $concatenatedString .= $value;
+}
+
+// Calculate HMAC
+$calculatedHmac = hash_hmac('sha512', $concatenatedString, $hmacSecret);
+
+// Compare
+if (!hash_equals($calculatedHmac, $hmac)) {
+    \Log::warning('Invalid HMAC in Paymob callback', [
+        'expected' => $calculatedHmac,
+        'received' => $hmac,
+    ]);
+    return ['success' => false, 'message' => 'Invalid HMAC'];
+}
+
+    // ----------------------------
     // Ensure success
+    // ----------------------------
     if (!isset($obj['success']) || $obj['success'] !== true) {
         return ['success' => false, 'message' => 'Payment failed'];
     }
