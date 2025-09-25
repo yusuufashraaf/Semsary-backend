@@ -13,6 +13,7 @@ class Notification extends Model
     protected $table = 'notifications';
 
     protected $fillable = [
+        'id',
         'user_id',      // recipient
         'sender_id',    // who triggered the notification
         'entity_id',    // related entity (property, booking, etc.)

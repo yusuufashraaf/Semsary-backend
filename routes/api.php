@@ -315,6 +315,7 @@ Route::middleware('auth:api')->prefix('user/{id}')->group(function ($id) {
     Route::get('/reviews', [UserController::class, 'reviews']);
     Route::get('/properties', [UserController::class, 'properties']);
     Route::get('/notifications', [UserController::class, 'notifications']);
+    Route::get('/notificationread/{notificationId}', [UserController::class, 'markAsRead']);
     Route::get('/purchases', [UserController::class, 'purchases']);
     Route::get('/bookings', [UserController::class, 'bookings']);
     Route::get('/wishlists', [UserController::class, 'wishlists']);
