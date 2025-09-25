@@ -74,16 +74,16 @@ Route::post('/login', [AuthenticationController::class, 'login'])->middleware('t
 Route::post('/refresh', [AuthenticationController::class, 'refresh']);
 
 Route::post('/verify-email', [AuthenticationController::class, 'verifyEmailOtp']);
-Route::post('/resend-email-otp', [AuthenticationController::class, 'resendEmailOtp'])->middleware('throttle:2,1');
+Route::post('/resend-email-otp', [AuthenticationController::class, 'resendEmailOtp'])->middleware('throttle:4,1');
 
 Route::post('/send-phone-otp', [AuthenticationController::class, 'sendPhoneOtp']);
-Route::post('/verify-phone-otp', [AuthenticationController::class, 'verifyPhoneOtp'])->middleware('throttle:2,1');
+Route::post('/verify-phone-otp', [AuthenticationController::class, 'verifyPhoneOtp'])->middleware('throttle:4,1');
 
 Route::post('/upload-id', [ImageOfId::class, 'uploadIdImage']);
 
 
 Route::post('/forgot-password', [forgetPasswordController::class, 'forgetPassword']);
-Route::post('/reset-password', [resetPassVerification::class, 'resetPassword'])->middleware('throttle:2,1');
+Route::post('/reset-password', [resetPassVerification::class, 'resetPassword'])->middleware('throttle:4,1');
 Route::post('/verify-reset-token', [resetPassVerification::class, 'verifyToken']);
 
 
@@ -296,17 +296,17 @@ Route::prefix('cs-agent')->middleware(['auth:api', 'role:agent'])->group(functio
 
 
 Route::middleware('auth:api')->prefix('user')->group(function () {
-    
+
     Route::get('/chats', [MessageController::class, 'getUserChats']);
-    
+
     Route::get('/chats/{chat}/messages', [MessageController::class, 'getChatMessages']);
-    
+
     Route::post('/chats/{chat}/messages', [MessageController::class, 'sendMessage']);
-    
+
     Route::post('/chats/start', [MessageController::class, 'startChat']);
-    
+
     Route::post('/chats/{chat}/read', [MessageController::class, 'markAsRead']);
-    
+
     // ADD THIS ROUTE for broadcasting authentication
     Route::post('/broadcasting/auth', [MessageController::class, 'authenticateBroadcast']);
 });
@@ -334,7 +334,7 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/properties/{property}/reviews', [ReviewController::class, 'getPropertyReviews']);
     Route::get('/user/reviewable-properties', [ReviewController::class, 'getReviewableProperties']);
     Route::get('/users/{user}/reviews', [ReviewController::class, 'getUserReviews']);
-    
+
 });
 
 
@@ -372,7 +372,7 @@ Route::middleware('auth:api')->group(function () {
 });
 
 
-    
+
 
     // Get all chats for authenticated user
     Route::middleware('auth:sanctum')->group(function () {
@@ -394,8 +394,8 @@ Route::get('/properties/{property}/reviews/analysis', [ReviewAnalysisController:
 Route::middleware('auth:api')->group(function () {
     // === User Actions ===
     Route::post('/checkout/{rentRequestId}', [CheckoutController::class, 'processCheckout']);
-    Route::get('/checkout/{rentRequestId}', [CheckoutController::class, 'getCheckoutStatus']); 
-    
+    Route::get('/checkout/{rentRequestId}', [CheckoutController::class, 'getCheckoutStatus']);
+
     // === Owner Actions ===
     Route::post('/checkout/{checkoutId}/owner/confirm', [CheckoutController::class, 'handleOwnerConfirm']);
     Route::post('/checkout/{checkoutId}/owner/reject', [CheckoutController::class, 'handleOwnerReject']);
@@ -441,13 +441,13 @@ Route::get('/properties/{id}/unavailable-dates', [RentRequestController::class, 
 
 // Property Purchase routes (add these to your existing routes)
 Route::middleware('auth:api')->group(function () {
-        
+
     // NEW: Get user's purchases only
     Route::get('/user/purchases', [PropertyPurchaseController::class, 'getUserPurchases']);
-    
+
     // NEW: Get user's purchase for specific property
     Route::get('/properties/{propertyId}/purchase', [PropertyPurchaseController::class, 'getUserPurchaseForProperty']);
-    
+
 });
 
 // -------------------- WALLET TOP UP --------------------
@@ -488,3 +488,4 @@ Route::middleware(['auth:api', 'role:admin'])
     });
 
     Route::post('/payment/callback', [PaymobCallbackController::class, 'handle']);
+
