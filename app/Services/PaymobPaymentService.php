@@ -480,6 +480,8 @@ if ($calculatedHmac !== $hmac) {
             "currency"          => $data['currency'],
             "merchant_order_id" => $merchantOrderId,
             "items"             => [],
+            "notification_url" => env("PAYMOB_CALLBACK_URL"),
+
         ];
 
         $orderResponse = $this->buildRequest('POST', '/api/ecommerce/orders', $orderPayload);

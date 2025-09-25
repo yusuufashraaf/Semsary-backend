@@ -487,5 +487,4 @@ Route::middleware(['auth:api', 'role:admin'])
         Route::get('/agents', [AdminChatController::class, 'agents']); // Just list agents
     });
 
-    Route::post('/payment/callback', [PaymobCallbackController::class, 'handle']);
-
+Route::post('/payment/paymob/callback', [PaymentController::class, 'handle']);

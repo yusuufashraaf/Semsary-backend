@@ -17,18 +17,18 @@ class PaymentController extends Controller
         $this->paymob = $paymob;
     }
 
-    public function handle(Request $request)
-    {
-        Log::info('Paymob callback received', $request->all());
+public function handle(Request $request)
+{
+    \Log::info('Paymob callback received', $request->all());
 
-        $result = app(PaymobPaymentService::class)->callBack($request->all());
+    $result = $this->paymob->callBack($request); // <-- pass Request, not $request->all()
 
-        if (!$result['success']) {
-            return response()->json($result, 400);
-        }
-
-        return response()->json(['message' => 'Callback handled successfully']);
+    if (!$result['success']) {
+        return response()->json($result, 400);
     }
+
+    return response()->json(['message' => 'Callback handled successfully']);
+}
 
 
     // -------------------- TOP UP WALLET --------------------
