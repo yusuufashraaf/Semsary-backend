@@ -12,6 +12,11 @@ use App\Models\Review;
 use App\Models\Purchase;
 use App\Models\Booking;
 use App\Models\Wishlist;
+use App\Models\PropertyPurchase;
+use App\Models\RentRequest;
+use App\Models\Notification;
+use Illuminate\Support\Facades\Auth;
+
 
 class UserController extends Controller
 {
@@ -38,20 +43,19 @@ class UserController extends Controller
 
     public function notifications(int $id)
     {
-
-        return UserNotification::where('user_id', $id)->get();
+        return Notification::where('notifiable_id', $id)->get();
     }
 
     public function purchases(int $id)
     {
 
-        return Purchase::with('property')->where('user_id', $id)->get();
+        return PropertyPurchase::with('property')->where('buyer_id', $id)->get();
     }
 
     public function bookings(int $id)
     {
 
-        return Booking::with('property')->where('user_id', $id)->get();
+        return RentRequest::with('property')->where('user_id', $id)->get();
     }
 
     public function wishlists(int $id)
@@ -73,14 +77,13 @@ class UserController extends Controller
         });
 }
 
-public function markAsRead(int $id,int $notificationid)
+public function markAsRead(int $id,int $notificationId)
     {
         // Verify the notification belongs to the authenticated user
-        $notification = UserNotification::where('id', $notificationid)
-            ->where('user_id', $id)
-            ->firstOrFail();
+        $notification = Notifications::where('id', $notificationid)
+            ->get();
 
-        $notification->update(['is_read' => !$notification->is_read]);
+        $notification->update(['read_at' => true]);
 
         return response()->json([
             'message' => 'Notification marked as read',

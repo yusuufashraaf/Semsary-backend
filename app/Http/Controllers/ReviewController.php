@@ -5,8 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Review;
 use App\Http\Resources\ReviewResource;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;        
 use App\Models\Property;
-use App\Models\rentrequest;
+use App\Models\RentRequest;
 use Illuminate\Support\Facades\Validator;
 
 class ReviewController extends Controller
@@ -38,8 +39,10 @@ class ReviewController extends Controller
         ->where('status', 'completed')
         ->get();
 
+        
+
     // Extract property IDs from the rent requests
-    $propertyIds = $rentRequests->pluck('property_id')->filter()->unique();
+     $propertyIds = $rentRequests->pluck('property_id')->filter()->unique();
 
     if ($propertyIds->isEmpty()) {
         return response()->json([
@@ -49,8 +52,8 @@ class ReviewController extends Controller
 
     // Get properties that don't have a review from this user
     $reviewableProperties = Property::whereIn('id', $propertyIds)
-        ->whereDoesntHave('reviews', function ($query) use ($userId) {
-            $query->where('user_id', $userId);
+        ->whereDoesntHave('reviews', function ($query) use ($user) {
+            $query->where('user_id', $user->id);
         })
         ->get();
 

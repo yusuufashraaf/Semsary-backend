@@ -47,6 +47,7 @@ use App\Http\Controllers\PropertyPurchaseController;
 
 use App\Http\Controllers\NewMessageController;
 
+use App\Http\Controllers\Admin\AdminChatController;
 
 
 //wallet
@@ -61,6 +62,7 @@ Route::post('/send-message',[NewMessageController::class,'sendMessage']);
 Route::post('/broadcasting/auth',[NewMessageController::class,'authenticateBroadcast']);
 Route::get('/fetch-messages/{chatId}',[NewMessageController::class,'fetchMessages']);
 Route::get('/fetch-chats/{userId}',[NewMessageController::class,'fetchChats']);
+Route::get('/fetch-available-chats/{userId}',[NewMessageController::class,'fetchAvailableChats']);
 
 
 // Public routes
@@ -314,6 +316,7 @@ Route::middleware('auth:api')->prefix('user/{id}')->group(function ($id) {
     Route::get('/reviews', [UserController::class, 'reviews']);
     Route::get('/properties', [UserController::class, 'properties']);
     Route::get('/notifications', [UserController::class, 'notifications']);
+    Route::get('/notificationread/{notificationId}', [UserController::class, 'markAsRead']);
     Route::get('/purchases', [UserController::class, 'purchases']);
     Route::get('/bookings', [UserController::class, 'bookings']);
     Route::get('/wishlists', [UserController::class, 'wishlists']);
@@ -467,3 +470,17 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
         Route::post('/{id}/change-role', [\App\Http\Controllers\Admin\UserController::class, 'changeRole']);
     });
 });
+
+
+Route::get('/properties', [PropertyController::class, 'getProperties']);
+Route::post('/properties/{id}/change-status', [PropertyController::class, 'changeStatus'])->name('properties.changeStatus');
+
+Route::middleware(['auth:api', 'role:admin'])
+    ->prefix('admin/chats')
+    ->group(function () {
+        Route::get('/', [AdminChatController::class, 'index']);       // List chats + agents
+        Route::get('/{id}', [AdminChatController::class, 'show']);    // Single chat details
+        Route::post('/{id}/assign', [AdminChatController::class, 'assign']);   // Assign agent
+        Route::post('/{id}/unassign', [AdminChatController::class, 'unassign']); // Unassign agent
+        Route::get('/agents', [AdminChatController::class, 'agents']); // Just list agents
+    });

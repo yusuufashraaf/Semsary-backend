@@ -16,6 +16,7 @@ class Property extends Model
     protected $appends = ['is_in_wishlist'];
 
     protected $fillable = [
+        'id',
         'owner_id',
         'title',
         'description',
@@ -416,6 +417,11 @@ public function activePurchase(): HasOne
 public function isUnderPurchase(): bool
 {
     return $this->status === 'pending_transfer' && $this->pending_buyer_id !== null;
+}
+
+public function chats()
+{
+    return $this->hasMany(Chat::class, 'property_id');
 }
 
 }
