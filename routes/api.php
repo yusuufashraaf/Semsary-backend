@@ -470,8 +470,8 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
 });
 
 
-Route::get('/properties', [PropertyController::class, 'getProperties']);
-Route::post('/properties/{id}/change-status', [PropertyController::class, 'changeStatus'])->name('properties.changeStatus');
+// Route::get('/properties', [PropertyController::class, 'getProperties']);
+Route::put('/properties/{id}/change-status', [PropertyController::class, 'changeStatus'])->name('properties.changeStatus');
 
 Route::middleware(['auth:api', 'role:admin'])
     ->prefix('admin/chats')
