@@ -47,6 +47,7 @@ use App\Http\Controllers\PropertyPurchaseController;
 
 use App\Http\Controllers\NewMessageController;
 
+use App\Http\Controllers\Admin\AdminChatController;
 
 
 //wallet
@@ -469,3 +470,17 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
         Route::post('/{id}/change-role', [\App\Http\Controllers\Admin\UserController::class, 'changeRole']);
     });
 });
+
+
+Route::get('/properties', [PropertyController::class, 'getProperties']);
+Route::post('/properties/{id}/change-status', [PropertyController::class, 'changeStatus'])->name('properties.changeStatus');
+
+Route::middleware(['auth:api', 'role:admin'])
+    ->prefix('admin/chats')
+    ->group(function () {
+        Route::get('/', [AdminChatController::class, 'index']);       // List chats + agents
+        Route::get('/{id}', [AdminChatController::class, 'show']);    // Single chat details
+        Route::post('/{id}/assign', [AdminChatController::class, 'assign']);   // Assign agent
+        Route::post('/{id}/unassign', [AdminChatController::class, 'unassign']); // Unassign agent
+        Route::get('/agents', [AdminChatController::class, 'agents']); // Just list agents
+    });

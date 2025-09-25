@@ -597,5 +597,59 @@ class PropertyController extends Controller
         ], 500);
     }
 }
+// Get all properties
+public function getProperties()
+{
+    $properties = Property::with(['owner', 'images', 'documents'])->get();
+
+    $properties->transform(function ($property) {
+        return [
+            'id' => $property->id,
+            'title' => $property->title,
+            'description' => $property->description,
+            'price' => $property->formatted_price, // accessor
+            'location' => $property->location_string, // accessor
+            'owner' => $property->owner,
+            'is_in_wishlist' => $property->is_in_wishlist,
+            'images' => $property->images->map(fn($img) => [
+                'id' => $img->id,
+                'url' => $img->image_url,
+                'type' => $img->image_type,
+                'order' => $img->order_index,
+            ]),
+            'documents' => $property->documents->map(fn($doc) => [
+                'id' => $doc->id,
+                'url' => $doc->document_url,
+                'type' => $doc->document_type,
+                'original_filename' => $doc->original_filename,
+            ]),
+        ];
+    });
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Properties fetched successfully',
+        'data' => $properties
+    ], 200);
+}
+
+
+// Change property status
+public function changeStatus(Request $request, $id)
+{
+    $request->validate([
+        'status' => 'required|in:Valid,Invalid,Pending,Rented,Sold',
+    ]);
+
+    $property = Property::findOrFail($id);
+    $property->property_state = $request->status;
+    $property->save();
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Property status updated!',
+        'data' => $property
+    ], 200);
+}
 
 }
