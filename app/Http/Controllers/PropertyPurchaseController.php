@@ -164,13 +164,13 @@ public function payForOwn(Request $request, $id)
                     'user'         => $user,
                     'idempotency_key' => $idempotencyKey,
                     'metadata'     => [
+                        'merchant_order_id' => $merchantOrderId, // ✅ pass to service
+                        'flow'           => 'buy',
                         'property_id'    => $property->id,
                         'buyer_id'       => $user->id,
                         'seller_id'      => $property->owner_id,
                         'wallet_to_use'  => $walletBalance,
                         'idempotency_key'=> $idempotencyKey,
-                        'flow'           => 'buy',
-                        'merchant_order_id' => $merchantOrderId, // ✅ pass to service
                     ],
                 ]);
 

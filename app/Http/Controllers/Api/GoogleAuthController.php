@@ -67,7 +67,7 @@ class GoogleAuthController extends Controller
                 'refresh_token' => $refreshToken
             ], now()->addMinutes(1)); // Expires in 1 minute
 
-            return redirect($frontendUrl . '/auth/callback?token=' . $tempToken);
+            return redirect($frontendUrl . 'auth/callback?token=' . $tempToken);
 
         } catch (\Exception $e) {
             Log::error('Google Auth Failed Exception: ' . $e->getMessage(), [
