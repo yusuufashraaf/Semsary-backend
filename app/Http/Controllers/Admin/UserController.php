@@ -40,6 +40,7 @@ class UserController extends Controller
                 'status' => 'success',
                 'message' => 'Users retrieved successfully',
                 'data' => UserResource::collection($users),
+                'allusers' => UserResource::collection($users),
                 'pagination' => [
                     'current_page' => $users->currentPage(),
                     'last_page' => $users->lastPage(),
