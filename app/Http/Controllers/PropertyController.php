@@ -638,12 +638,12 @@ public function getProperties()
 public function changeStatus(Request $request, $id)
 {
     $request->validate([
-        'status' => 'required|in:Valid,Invalid,Pending,Rented,Sold',
+        'status' => 'required|in:Valid,Invalid,Pending,Rented,Sold, Rejected',
     ]);
 
     $property = Property::findOrFail($id);
-    $property->property_state = $request->status;
-    $property->save();
+    $property->property_state = $request->property;
+    $property->update();
 
     return response()->json([
         'success' => true,

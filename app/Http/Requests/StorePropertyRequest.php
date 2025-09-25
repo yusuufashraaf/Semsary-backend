@@ -35,7 +35,7 @@ class StorePropertyRequest extends FormRequest
             'location.lat'  => 'numeric|between:-90,90',
             'location.lng'  => 'numeric|between:-180,180',
             'size'          => 'required|integer|min:60',
-            'property_state'=> 'in:Valid,Invalid,Pending,Rented,Sold',
+            'property_state'=> 'in:Valid,Rejected|Invalid,Pending,Rented,Sold',
             'status'        => 'required|in:sale,rent',
             // Images
             'images' => 'required|array',
