@@ -16,7 +16,8 @@ class Chat extends Model
         'property_id',
         'owner_id',
         'renter_id',
-        'last_message_at'
+        'last_message_at',
+        'assigned_agent_id',
     ];
 
     protected $casts = [
@@ -56,5 +57,10 @@ class Chat extends Model
     public function getOtherUserAttribute()
     {
         return auth()->id() === $this->owner_id ? $this->renter : $this->owner;
+    }
+
+    public function assignedAgent(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_agent_id');
     }
 }

@@ -378,4 +378,9 @@ public function hasWalletBalance($amount = 0)
 {
     return $this->getWalletBalance() >= $amount;
 }
+public function assignedChats()
+{
+    return $this->hasMany(Chat::class, 'assigned_agent_id');
+}
+
 }

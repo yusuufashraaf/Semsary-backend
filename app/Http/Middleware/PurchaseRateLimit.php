@@ -14,7 +14,7 @@ class PurchaseRateLimit
 
         $attempts = Cache::get($key, 0);
 
-        if ($attempts >= 4) {
+        if ($attempts >= 2000) {
             return response()->json([
                 'success' => false,
                 'message' => 'You have reached the maximum of 4 purchase attempts per hour.'
