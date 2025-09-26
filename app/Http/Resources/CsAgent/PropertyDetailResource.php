@@ -63,7 +63,7 @@ class PropertyDetailResource extends JsonResource
                     'email' => $this->owner->email,
                     'phone_number' => $this->owner->phone_number,
                     'status' => $this->owner->status,
-                    'member_since' => $this->owner->created_at->format('M Y'),
+                    'member_since' => $this->owner->created_at ? $this->owner->created_at->format('M Y') : null,
                 ];
             }),
 
@@ -76,7 +76,7 @@ class PropertyDetailResource extends JsonResource
                         'alt_text' => $image->alt_text ?? $this->title,
                         'is_primary' => $image->is_primary ?? false,
                         'order_index' => $image->order_index ?? 0,
-                        'uploaded_at' => $image->created_at->format('M d, Y H:i'),
+                        'uploaded_at' => $image->created_at ? $image->created_at->format('M d, Y H:i') : null,
                     ];
                 })->sortBy('order_index')->values();
             }),
@@ -90,7 +90,7 @@ class PropertyDetailResource extends JsonResource
                         'type' => $document->document_type,
                         'url' => $document->document_url,
                         'size' => $document->file_size ?? null,
-                        'uploaded_at' => $document->created_at->format('M d, Y H:i'),
+                        'uploaded_at' => $document->created_at ? $document->created_at->format('M d, Y H:i') : null,
                         'verified' => $document->verified ?? false,
                         'verification_notes' => $document->verification_notes ?? null,
                     ];
@@ -117,9 +117,9 @@ class PropertyDetailResource extends JsonResource
                     'formatted_status' => $this->currentAssignment->formatted_status,
                     'notes' => $this->currentAssignment->notes,
                     'priority' => $this->currentAssignment->priority,
-                    'assigned_at' => $this->currentAssignment->assigned_at->format('M d, Y H:i'),
-                    'started_at' => $this->currentAssignment->started_at?->format('M d, Y H:i'),
-                    'completed_at' => $this->currentAssignment->completed_at?->format('M d, Y H:i'),
+                    'assigned_at' => $this->currentAssignment->assigned_at ? $this->currentAssignment->assigned_at->format('M d, Y H:i') : null,
+                    'started_at' => $this->currentAssignment->started_at ? $this->currentAssignment->started_at->format('M d, Y H:i') : null,
+                    'completed_at' => $this->currentAssignment->completed_at ? $this->currentAssignment->completed_at->format('M d, Y H:i') : null,
                     'duration_hours' => $this->currentAssignment->duration,
                     'assigned_by' => $this->currentAssignment->assignedBy ? [
                         'id' => $this->currentAssignment->assignedBy->id,
@@ -135,11 +135,9 @@ class PropertyDetailResource extends JsonResource
                         'id' => $review->id,
                         'rating' => (int) $review->rating,
                         'comment' => $review->comment,
-                        'user_name' => $review->user ? 
-                            trim($review->user->first_name . ' ' . $review->user->last_name) : 
-                            'Anonymous',
-                        'created_at' => $review->created_at->format('M d, Y'),
-                        'created_at_human' => $review->created_at->diffForHumans(),
+                        'user_name' => $review->user ? trim($review->user->first_name . ' ' . $review->user->last_name) : 'Anonymous',
+                        'created_at' => $review->created_at ? $review->created_at->format('M d, Y') : null,
+                        'created_at_human' => $review->created_at ? $review->created_at->diffForHumans() : null,
                     ];
                 });
             }),
@@ -164,11 +162,11 @@ class PropertyDetailResource extends JsonResource
 
             // Activity timeline
             'activity' => [
-                'created_at' => $this->created_at->toISOString(),
-                'updated_at' => $this->updated_at->toISOString(),
-                'created_at_human' => $this->created_at->format('M d, Y H:i'),
-                'updated_at_human' => $this->updated_at->diffForHumans(),
-                'days_since_created' => $this->created_at->diffInDays(now()),
+                'created_at' => $this->created_at ? $this->created_at->toISOString() : null,
+                'updated_at' => $this->updated_at ? $this->updated_at->toISOString() : null,
+                'created_at_human' => $this->created_at ? $this->created_at->format('M d, Y H:i') : null,
+                'updated_at_human' => $this->updated_at ? $this->updated_at->diffForHumans() : null,
+                'days_since_created' => $this->created_at ? $this->created_at->diffInDays(now()) : null,
             ],
         ];
     }
@@ -196,13 +194,11 @@ class PropertyDetailResource extends JsonResource
     {
         $amount = number_format($this->price, 0);
         $currency = '$';
-
         $typeLabels = [
             'FullPay' => '',
             'Monthly' => '/month',
             'Daily' => '/day'
         ];
-
         $suffix = $typeLabels[$this->price_type] ?? '';
 
         return $currency . $amount . $suffix;
@@ -340,17 +336,13 @@ class PropertyDetailResource extends JsonResource
                 [
                     'key' => 'owner_active',
                     'label' => 'Owner account is active',
-                    'completed' => $this->relationLoaded('owner') && 
-                                  $this->owner && 
-                                  $this->owner->status === 'active',
+                    'completed' => $this->relationLoaded('owner') && $this->owner && $this->owner->status === 'active',
                     'required' => true,
                 ],
                 [
                     'key' => 'contact_info',
                     'label' => 'Owner contact information available',
-                    'completed' => $this->relationLoaded('owner') && 
-                                  $this->owner && 
-                                  (!empty($this->owner->email) || !empty($this->owner->phone_number)),
+                    'completed' => $this->relationLoaded('owner') && $this->owner && (!empty($this->owner->email) || !empty($this->owner->phone_number)),
                     'required' => true,
                 ],
             ]
