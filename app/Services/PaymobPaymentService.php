@@ -338,7 +338,7 @@ if (!$paymentSuccess) {
                         ]);
 
                         $purchase->property->update([
-                            'status'           => 'sold',
+                            'status'           => 'sale',
                             'property_state'   => 'Sold',
                             'pending_buyer_id' => null,
                         ]);
