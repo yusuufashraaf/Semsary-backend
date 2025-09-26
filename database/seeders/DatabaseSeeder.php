@@ -32,6 +32,7 @@ class DatabaseSeeder extends Seeder
             CSAgentPropertyAssignSeeder::class,
             chatseeder::class,
             rentRequestSeeder::class,
+            PropertyPurchaseSeeder::class,
             // Add other seeders as needed
         // ... other seeders like ReviewSeeder
     ]);

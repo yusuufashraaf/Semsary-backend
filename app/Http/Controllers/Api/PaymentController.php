@@ -22,7 +22,13 @@ class PaymentController extends Controller
 
 public function handle(Request $request)
 {
-    \Log::info('Paymob callback received at handle method', $request->all());
+    // Log the request method and all data
+    \Log::info('Paymob callback received', [
+        'method' => $request->method(),
+        'query_params' => $request->query(),
+        'post_data' => $request->all(),
+        'headers' => $request->headers->all()
+    ]);
 
     try {
         $result = $this->paymob->callBack($request);
@@ -39,13 +45,12 @@ public function handle(Request $request)
     } catch (\Exception $e) {
         \Log::error('Exception in Paymob callback handle', [
             'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
+            'trace' => $e->getTraceAsString(),
+            'request_data' => $request->all()
         ]);
         return response()->json(['error' => 'Callback processing failed'], 500);
     }
-}
-
-    // -------------------- TOP UP WALLET --------------------
+}    // -------------------- TOP UP WALLET --------------------
     public function topUpWallet(Request $request)
     {
         $request->validate([
