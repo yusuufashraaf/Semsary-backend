@@ -445,7 +445,7 @@ if (!$paymentSuccess) {
                 ->first();
 
             if (!$purchase) {
-                $purchase = Purchase::where('transaction_id', $merchantOrderId)
+                $purchase = Purchase::where('transaction_ref', $merchantOrderId)
                     ->orWhere('transaction_ref', $merchantOrderId)
                     ->first();
             }
@@ -497,7 +497,7 @@ if (!$paymentSuccess) {
 
                     $purchase->update([
                         'status'         => 'paid',
-                        'transaction_id' => $obj['id'] ?? $purchase->transaction_id,
+                        'transaction_id' => $obj['id'] ?? $purchase->transaction_ref,
                         'metadata'       => array_merge($purchase->metadata ?? [], ['paymob_txn' => $obj]),
                     ]);
 
