@@ -52,7 +52,7 @@ class UserBalanceController extends Controller
             'success' => true,
             'available_amount' => number_format($walletBalance, 2),
             'returnable_amount' => number_format($returnableMoney, 2),
-            'total_accessible' => number_format($walletBalance,2)
+            'total_accessible' => number_format($walletBalance + $returnableMoney, 2)
         ]);
     }
 }
