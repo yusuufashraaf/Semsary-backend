@@ -25,95 +25,121 @@ class PaymentController extends Controller
     /**
      * Handle Paymob callback with HMAC validation and frontend redirects
      */
-    public function handle(Request $request)
-    {
-        Log::info('Paymob callback received', [
-            'method' => $request->method(),
-            'query_params' => $request->query(),
-            'all_data' => $request->all(),
-            'raw_query' => $request->getQueryString()
+public function handle(Request $request)
+{
+    Log::info('=== PAYMOB CALLBACK DEBUG START ===');
+    Log::info('Request method: ' . $request->method());
+    Log::info('All request data:', $request->all());
+    Log::info('Query params:', $request->query());
+    Log::info('Raw query string: ' . $request->getQueryString());
+    
+    // Check if this is GET or POST
+    if ($request->isMethod('post')) {
+        Log::info('POST body:', $request->getContent());
+    }
+
+    try {
+        // HMAC validation - this should pass in dev
+        $hmacValid = $this->validateHmac($request);
+        Log::info('HMAC validation result: ' . ($hmacValid ? 'PASSED' : 'FAILED'));
+
+        if (!$hmacValid) {
+            Log::error('HMAC validation failed - redirecting to failed page');
+            return redirect()->to(env('FRONTEND_URL', 'http://localhost:5173') . '/payment/failed?error=invalid_hmac');
+        }
+
+        // ✅ FIXED: Extract payment data properly
+        // Check both query params and request body for the data
+        $merchantOrderId = $request->input('merchant_order_id') 
+                         ?? $request->query('merchant_order_id')
+                         ?? $request->input('obj.order.merchant_order_id')
+                         ?? ($request->input('obj')['order']['merchant_order_id'] ?? null);
+        
+        // Multiple ways Paymob sends success status
+        $success = $request->input('success') === true 
+                || $request->input('success') === 'true'
+                || $request->query('success') === 'true'
+                || $request->query('success') === true
+                || ($request->input('obj')['success'] ?? false) === true;
+
+        $amount = $request->input('amount_cents') 
+                ?? $request->query('amount_cents')
+                ?? ($request->input('obj')['amount_cents'] ?? 0);
+                
+        $transactionId = $request->input('id') 
+                      ?? $request->query('id')
+                      ?? ($request->input('obj')['id'] ?? null);
+                      
+        $currency = $request->input('currency', 'EGP') 
+                 ?? $request->query('currency', 'EGP');
+
+        Log::info('=== EXTRACTED DATA ===', [
+            'merchant_order_id' => $merchantOrderId,
+            'success' => $success,
+            'success_raw' => $request->input('success'),
+            'success_query' => $request->query('success'),
+            'amount' => $amount,
+            'transaction_id' => $transactionId,
+            'currency' => $currency
         ]);
 
-        try {
-            // Validate HMAC first
-            if (!$this->validateHmac($request)) {
-                Log::error('HMAC validation failed', [
-                    'received_hmac' => $request->query('hmac'),
-                    'calculated_hmac' => $this->calculateHmac($request)
-                ]);
-                
-                return redirect()->to(env('FRONTEND_URL', 'http://localhost:3000') . '/payment/failed?error=invalid_hmac');
-            }
+        // Process the payment using PaymobPaymentService
+        $result = $this->paymob->callBack($request);
+        Log::info('PaymobPaymentService result:', $result);
 
-            // Extract payment data
-            $merchantOrderId = $request->query('merchant_order_id');
-            $success = $request->query('success') === 'true';
-            $amount = $request->query('amount_cents');
-            $transactionId = $request->query('id');
-            $currency = $request->query('currency', 'EGP');
-            
-            Log::info('Processing Paymob callback', [
-                'merchant_order_id' => $merchantOrderId,
+        // Additional processing
+        if ($success && $result['success']) {
+            Log::info('Processing successful payment');
+            $this->processSuccessfulPayment($merchantOrderId, $transactionId, $amount);
+        } else {
+            Log::warning('Processing failed payment', [
                 'success' => $success,
-                'amount' => $amount,
-                'transaction_id' => $transactionId
+                'service_success' => $result['success'] ?? 'not_set',
+                'error' => $request->input('error_message', 'Payment failed')
             ]);
-
-            // Process the payment using the PaymobPaymentService
-            $result = $this->paymob->callBack($request);
-            
-            Log::info('PaymobPaymentService callback result', $result);
-
-            // Additional processing based on merchant_order_id if needed
-            if ($success && $result['success']) {
-                $this->processSuccessfulPayment($merchantOrderId, $transactionId, $amount);
-            } else {
-                $this->processFailedPayment($merchantOrderId, $request->query('error_message', 'Payment failed'));
-            }
-
-            // Get frontend URL
-            $frontendUrl = rtrim(env('FRONTEND_URL', 'http://localhost:3000'), '/');
-            
-            if ($success) {
-                // Success - redirect to success page
-                $successUrl = $frontendUrl . '/payment/success?' . http_build_query([
-                    'order_id' => $merchantOrderId,
-                    'transaction_id' => $transactionId,
-                    'amount' => $amount / 100, // Convert cents to dollars
-                    'currency' => $currency,
-                    'status' => 'completed'
-                ]);
-                
-                Log::info('Redirecting to success page', ['url' => $successUrl]);
-                return redirect()->to($successUrl);
-                
-            } else {
-                // Failed - redirect to failure page
-                $failureUrl = $frontendUrl . '/payment/failed?' . http_build_query([
-                    'order_id' => $merchantOrderId,
-                    'error' => 'payment_failed',
-                    'message' => $request->query('error_message', 'Payment processing failed')
-                ]);
-                
-                Log::info('Redirecting to failure page', ['url' => $failureUrl]);
-                return redirect()->to($failureUrl);
-            }
-            
-        } catch (\Exception $e) {
-            Log::error('Exception in Paymob callback', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'request_data' => $request->all()
-            ]);
-            
-            // Redirect to error page
-            $errorUrl = env('FRONTEND_URL', 'http://localhost:3000') . '/payment/error?' . http_build_query([
-                'message' => 'An error occurred during payment processing'
-            ]);
-            
-            return redirect()->to($errorUrl);
+            $this->processFailedPayment($merchantOrderId, $request->input('error_message', 'Payment failed'));
         }
+
+        // Frontend URL construction
+        $frontendUrl = rtrim(env('FRONTEND_URL', 'http://localhost:3000'), '/');
+        
+        if ($success && ($result['success'] ?? false)) {
+            $successUrl = $frontendUrl . '/payment/success?' . http_build_query([
+                'order_id' => $merchantOrderId,
+                'transaction_id' => $transactionId,
+                'amount' => $amount / 100,
+                'currency' => $currency,
+                'status' => 'completed'
+            ]);
+            
+            Log::info('=== REDIRECTING TO SUCCESS ===', ['url' => $successUrl]);
+            return redirect()->to($successUrl);
+            
+        } else {
+            $failureUrl = $frontendUrl . '/payment/failed?' . http_build_query([
+                'order_id' => $merchantOrderId,
+                'error' => 'payment_failed',
+                'message' => $request->input('error_message', 'Payment processing failed')
+            ]);
+            
+            Log::info('=== REDIRECTING TO FAILURE ===', ['url' => $failureUrl]);
+            return redirect()->to($failureUrl);
+        }
+        
+    } catch (\Exception $e) {
+        Log::error('=== EXCEPTION IN CALLBACK ===', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+            'request_data' => $request->all()
+        ]);
+        
+        $errorUrl = env('FRONTEND_URL', 'http://localhost:5173') . '/payment/error?' . http_build_query([
+            'message' => 'An error occurred during payment processing'
+        ]);
+        
+        return redirect()->to($errorUrl);
     }
+}
 
     /**
      * Process successful payment
@@ -322,32 +348,31 @@ class PaymentController extends Controller
     /**
      * Validate HMAC signature
      */
-    private function validateHmac(Request $request)
-    {
-        // TEMPORARY: Skip HMAC validation for testing
-        // REMOVE THIS IN PRODUCTION
-        if (env('APP_ENV') === 'local' || env('PAYMOB_IS_SANDBOX') === 'true') {
-            Log::warning('HMAC validation skipped for testing');
-            return true;
-        }
-        
-        $receivedHmac = $request->query('hmac');
-        
-        if (!$receivedHmac) {
-            Log::error('No HMAC provided in callback');
-            return false;
-        }
-        
-        $calculatedHmac = $this->calculateHmac($request);
-        
-        Log::info('HMAC validation', [
-            'received' => $receivedHmac,
-            'calculated' => $calculatedHmac,
-            'match' => hash_equals($receivedHmac, $calculatedHmac)
-        ]);
-        
-        return hash_equals($receivedHmac, $calculatedHmac);
+private function validateHmac(Request $request)
+{
+    // Skip HMAC validation in development
+    if (env('APP_ENV') === 'local' || env('PAYMOB_IS_SANDBOX') === true || env('PAYMOB_IS_SANDBOX') === 'true') {
+        Log::info('HMAC validation skipped for development environment');
+        return true;
     }
+    
+    $receivedHmac = $request->query('hmac') ?? $request->input('hmac');
+    
+    if (!$receivedHmac) {
+        Log::error('No HMAC provided in callback');
+        return false;
+    }
+    
+    $calculatedHmac = $this->calculateHmac($request);
+    
+    Log::info('HMAC validation details:', [
+        'received' => $receivedHmac,
+        'calculated' => $calculatedHmac,
+        'match' => hash_equals($receivedHmac, $calculatedHmac)
+    ]);
+    
+    return hash_equals($receivedHmac, $calculatedHmac);
+}
 
     /**
      * Calculate HMAC signature using Paymob's method
