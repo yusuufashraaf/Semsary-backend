@@ -43,7 +43,7 @@ class UserController extends Controller
 
     public function notifications(int $id)
     {
-        return Notification::where('notifiable_id', $id)->get();
+        return UserNotification::where('user_id', $id)->get();
     }
 
     public function purchases(int $id)
@@ -77,19 +77,19 @@ class UserController extends Controller
         });
 }
 
-public function markAsRead(int $id,int $notificationId)
+public function markAsRead(int $id,int $notificationid)
     {
         // Verify the notification belongs to the authenticated user
-        $notification = Notifications::where('id', $notificationid)
-            ->get();
+        $notification = UserNotification::where('id', $notificationid)
+            ->where('user_id', $id)
+            ->firstOrFail();
 
-        $notification->update(['read_at' => true]);
+        $notification->update(['is_read' => !$notification->is_read]);
 
         return response()->json([
             'message' => 'Notification marked as read',
             'notification' => $notification
         ]);
     } 
-
 
 }
