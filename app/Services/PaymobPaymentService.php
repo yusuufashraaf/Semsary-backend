@@ -159,7 +159,7 @@ class PaymobPaymentService extends BasePaymentService
     \Log::info('Processing callback', [
         'merchant_order_id' => $merchantOrderId,
         'amount' => $amount,
-        'transaction_id' => $obj['id'] ?? 'unknown',
+        'transaction_ref' => $obj['id'] ?? 'unknown',
         'payment_success' => $paymentSuccess
     ]);
 
@@ -495,11 +495,12 @@ if (!$paymentSuccess) {
                         }
                     }
 
-                    $purchase->update([
-                        'status'         => 'paid',
-                        'transaction_id' => $obj['id'] ?? $purchase->transaction_ref,
-                        'metadata'       => array_merge($purchase->metadata ?? [], ['paymob_txn' => $obj]),
-                    ]);
+            $purchase->update([
+    'status'         => 'paid',
+    'transaction_ref'=> $obj['id'] ?? $purchase->transaction_ref,
+    'metadata'       => array_merge($purchase->metadata ?? [], ['paymob_txn' => $obj]),
+]);
+
 
                     $rentRequest   = RentRequest::lockForUpdate()->find($purchase->rent_request_id);
                     $rentAmount    = $purchase->amount - ($purchase->deposit_amount ?? 0);
