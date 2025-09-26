@@ -1,91 +1,97 @@
 <?php
 
-namespace App\Jobs;
+namespace App\Console\Commands;
 
-use App\Models\PropertyEscrow;
-use App\Models\Wallet;
-use App\Models\WalletTransaction;
-use App\Notifications\EscrowReleasedSeller;
-use App\Notifications\EscrowReleasedBuyer;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
+use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
+use App\Models\PropertyEscrow;
+use App\Models\Wallet;
+use App\Models\WalletTransaction;
+use App\Notifications\EscrowReleasedBuyer;
+use App\Notifications\EscrowReleasedSeller;
 
-class ReleasePropertyEscrow implements ShouldQueue
+class ReleaseEscrowCommand extends Command
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    protected int $escrowId;
-
-    public function __construct(int $escrowId)
-    {
-        $this->escrowId = $escrowId;
-    }
+    protected $signature = 'escrow:release';
+    protected $description = 'Release expired property escrows to sellers';
 
     public function handle()
     {
-        DB::transaction(function () {
-            $escrow = PropertyEscrow::with(['seller', 'buyer', 'propertyPurchase', 'property'])
-                ->find($this->escrowId);
+        $now = now();
 
-            if (!$escrow) {
-                Log::warning("Escrow ID {$this->escrowId} not found, skipping release.");
-                return;
-            }
+        $escrows = PropertyEscrow::with(['propertyPurchase', 'seller', 'buyer', 'property'])
+            ->where('status', 'locked')
+            ->where('scheduled_release_at', '<=', $now)
+            ->get();
 
-            $seller = $escrow->seller;
+        if ($escrows->isEmpty()) {
+            $this->info("No escrows ready for release at {$now}");
+            return;
+        }
 
-            if (!$seller) {
-                Log::error("Seller missing for escrow ID {$this->escrowId}");
-                return;
-            }
+        $this->info("Found {$escrows->count()} escrows ready for release.");
 
-            Log::info("Releasing escrow ID {$escrow->id} for seller ID {$seller->id}");
+        foreach ($escrows as $escrow) {
+            DB::transaction(function () use ($escrow) {
+                try {
+                    $seller = $escrow->seller;
 
-            // Lock seller wallet
-            $wallet = Wallet::lockForUpdate()->firstOrCreate(
-                ['user_id' => $seller->id],
-                ['balance' => 0]
-            );
+                    if (!$seller) {
+                        Log::error("Seller missing for escrow ID {$escrow->id}");
+                        return;
+                    }
 
-            $before = $wallet->balance;
-            $wallet->increment('balance', $escrow->amount);
+                    // Lock seller wallet
+                    $wallet = Wallet::lockForUpdate()->firstOrCreate(
+                        ['user_id' => $seller->id],
+                        ['balance' => 0]
+                    );
 
-            WalletTransaction::create([
-                'wallet_id'      => $wallet->id,
-                'amount'         => $escrow->amount,
-                'type'           => 'sale_income',
-                'ref_id'         => $escrow->propertyPurchase?->id,
-                'ref_type'       => 'property_purchase',
-                'description'    => 'Escrow released to seller',
-                'balance_before' => $before,
-                'balance_after'  => $wallet->balance,
-            ]);
+                    $before = $wallet->balance;
+                    $wallet->increment('balance', $escrow->amount);
 
-            // Update escrow + purchase
-            $escrow->update([
-                'status'         => 'released_to_seller',
-                'released_at'    => now(),
-                'release_reason' => 'buyer_did_not_cancel',
-            ]);
+                    WalletTransaction::create([
+                        'wallet_id'      => $wallet->id,
+                        'amount'         => $escrow->amount,
+                        'type'           => 'sale_income',
+                        'ref_id'         => $escrow->propertyPurchase?->id,
+                        'ref_type'       => 'property_purchase',
+                        'description'    => 'Escrow released to seller',
+                        'balance_before' => $before,
+                        'balance_after'  => $wallet->balance,
+                    ]);
 
-            $escrow->propertyPurchase?->update(['status' => 'completed']);
+                    // Update escrow + purchase
+                    $escrow->update([
+                        'status'         => 'released_to_seller',
+                        'released_at'    => now(),
+                        'release_reason' => 'buyer_did_not_cancel',
+                    ]);
 
-            $escrow->property?->update([
-                'property_state'   => 'Sold',
-                'pending_buyer_id' => null,
-            ]);
+                    $escrow->propertyPurchase?->update(['status' => 'completed']);
 
-            // Send notifications
-            Notification::send($escrow->seller, new EscrowReleasedSeller($escrow));
-            Notification::send($escrow->buyer, new EscrowReleasedBuyer($escrow));
+                    // Mark property as sold
+                    $escrow->property?->update([
+                        'property_state'   => 'Sold',
+                        'pending_buyer_id' => null,
+                    ]);
 
-            Log::info("Escrow ID {$escrow->id} released successfully.");
-        });
+                    // Notifications
+                    try {
+                        Notification::send($escrow->buyer, new EscrowReleasedBuyer($escrow));
+                        Notification::send($escrow->seller, new EscrowReleasedSeller($escrow));
+                    } catch (\Exception $e) {
+                        Log::warning('Escrow notification failed', ['error' => $e->getMessage()]);
+                    }
+
+                    $this->info("Released escrow #{$escrow->id} to seller #{$seller->id}");
+                } catch (\Throwable $e) {
+                    Log::error("Failed to release escrow {$escrow->id}: " . $e->getMessage());
+                    $this->error("Failed to release escrow #{$escrow->id}");
+                }
+            });
+        }
     }
 }
