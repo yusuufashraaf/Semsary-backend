@@ -215,7 +215,7 @@ public function payForOwn(Request $request, $id)
                 'amount'                => $totalAmount,
                 'status'                => 'locked',
                 'locked_at'             => now(),
-                'scheduled_release_at'  => now()->addDays(3),
+                'scheduled_release_at'  => now()->addMinute(),
             ]);
 
             // 🔔 Notifications

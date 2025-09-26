@@ -117,8 +117,8 @@ class CSAgentPropertyAssignFactory extends Factory
     {
         return $this->state(function (array $attributes) {
             $assignedAt = $attributes['assigned_at'] ?? fake()->dateTimeBetween('-30 days', '-1 day');
-            $startedAt = fake()->dateTimeBetween($assignedAt, Carbon::parse($assignedAt)->addDays(2));
-            $completedAt = fake()->dateTimeBetween($startedAt, Carbon::parse($startedAt)->addDays(5));
+            $startedAt = fake()->dateTimeBetween($assignedAt, Carbon::parse($assignedAt)->addMinute(),);
+            $completedAt = fake()->dateTimeBetween($startedAt, Carbon::parse($startedAt)->addMinute(),);
 
             return [
                 'status' => CSAgentPropertyAssign::STATUS_COMPLETED,
@@ -137,8 +137,8 @@ class CSAgentPropertyAssignFactory extends Factory
     {
         return $this->state(function (array $attributes) {
             $assignedAt = $attributes['assigned_at'] ?? fake()->dateTimeBetween('-30 days', '-1 day');
-            $startedAt = fake()->optional(0.6)->dateTimeBetween($assignedAt, Carbon::parse($assignedAt)->addDays(3));
-            $completedAt = fake()->dateTimeBetween($startedAt ?? $assignedAt, Carbon::parse($startedAt ?? $assignedAt)->addDays(2));
+            $startedAt = fake()->optional(0.6)->dateTimeBetween($assignedAt, Carbon::parse($assignedAt)->addMinute(),);
+            $completedAt = fake()->dateTimeBetween($startedAt ?? $assignedAt, Carbon::parse($startedAt ?? $assignedAt)->addMinute(),);
 
             $rejectionReasons = [
                 'Property information incomplete',
@@ -213,7 +213,7 @@ class CSAgentPropertyAssignFactory extends Factory
     {
         return $this->state(function (array $attributes) {
             $assignedAt = fake()->dateTimeBetween('-15 days', '-5 days');
-            $startedAt = fake()->dateTimeBetween($assignedAt, Carbon::parse($assignedAt)->addDays(2));
+            $startedAt = fake()->dateTimeBetween($assignedAt, Carbon::parse($assignedAt)->addMinute(),);
 
             return [
                 'status' => CSAgentPropertyAssign::STATUS_IN_PROGRESS,
