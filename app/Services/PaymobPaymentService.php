@@ -126,81 +126,93 @@ class PaymobPaymentService extends BasePaymentService
      * - rent-: rent payment flow (new)
      */
     public function callBack(Request $request): array
-    {
-        $response = $request->all();
-        \Log::info('Paymob callback received (service)', $response);
+{
+    $response = $request->all();
+    \Log::info('Paymob callback received (service)', $response);
 
-        $obj = $response['obj'] ?? $response['transaction'] ?? $response;
+    // FIX: Use response directly since Paymob sends flat data
+    $obj = $response;
 
-      // HMAC VALIDATION - COMPLETELY DISABLED
-\Log::info('HMAC validation completely disabled in PaymobPaymentService');
+    // HMAC VALIDATION - COMPLETELY DISABLED
+    \Log::info('HMAC validation completely disabled in PaymobPaymentService');
 
-        // CHECK PAYMENT SUCCESS - Modified to handle both success and failure
-        $paymentSuccess = isset($obj['success']) && $obj['success'] === true;
-        
-        if (!$paymentSuccess) {
-            \Log::warning('Payment was not successful', [
-                'success_field' => $obj['success'] ?? 'not_set',
-                'error_occured' => $obj['error_occured'] ?? 'not_set'
-            ]);
-            // Don't return here - we want to process failed payments too to update status
-        }
-
-        $amount          = ($obj['amount_cents'] ?? 0) / 100;
-        $merchantOrderId = $obj['order']['merchant_order_id'] ?? $obj['merchant_order_id'] ?? null;
-
-        \Log::info('Processing callback', [
-            'merchant_order_id' => $merchantOrderId,
-            'amount' => $amount,
-            'transaction_id' => $obj['id'] ?? 'unknown',
-            'payment_success' => $paymentSuccess
+    // CHECK PAYMENT SUCCESS - Fixed logic
+    $paymentSuccess = ($obj['success'] ?? false) === true || ($obj['success'] ?? false) === 'true';
+    
+    \Log::info('Payment success check', [
+        'success_value' => $obj['success'] ?? 'not_set',
+        'success_type' => gettype($obj['success'] ?? null),
+        'payment_success' => $paymentSuccess
+    ]);
+    
+    if (!$paymentSuccess) {
+        \Log::warning('Payment was not successful', [
+            'success_field' => $obj['success'] ?? 'not_set',
+            'error_occured' => $obj['error_occured'] ?? 'not_set'
         ]);
+        // Don't return here - we want to process failed payments too to update status
+    }
 
-        if (!$merchantOrderId) {
-            \Log::error('Missing merchant_order_id');
-            return ['success' => false, 'message' => 'Missing merchant_order_id'];
-        }
+    $amount          = ($obj['amount_cents'] ?? 0) / 100;
+    $merchantOrderId = $obj['merchant_order_id'] ?? null;
 
-        // Handle failed payments first - update status but don't process flow logic
-        if (!$paymentSuccess) {
-            \Log::info('Processing failed payment', ['merchant_order_id' => $merchantOrderId]);
+    \Log::info('Processing callback', [
+        'merchant_order_id' => $merchantOrderId,
+        'amount' => $amount,
+        'transaction_id' => $obj['id'] ?? 'unknown',
+        'payment_success' => $paymentSuccess
+    ]);
+
+    if (!$merchantOrderId) {
+        \Log::error('Missing merchant_order_id');
+        return ['success' => false, 'message' => 'Missing merchant_order_id'];
+    }
+
+    // Handle failed payments first - update status but don't process flow logic
+  // Handle failed payments first - update status but don't process flow logic
+if (!$paymentSuccess) {
+    \Log::info('Processing failed payment', ['merchant_order_id' => $merchantOrderId]);
+    
+    // Update relevant records to failed status
+    if (str_starts_with($merchantOrderId, 'buy-')) {
+        $parts = explode('-', $merchantOrderId);
+        $propertyId = intval($parts[1] ?? 0);
+        $userId = intval($parts[2] ?? 0);
+        
+        $purchase = PropertyPurchase::where('property_id', $propertyId)
+            ->where('buyer_id', $userId)
+            ->where('status', 'pending')
+            ->first();
             
-            // Update relevant records to failed status
-            if (str_starts_with($merchantOrderId, 'buy-')) {
-                $parts = explode('-', $merchantOrderId);
-                $propertyId = intval($parts[1] ?? 0);
-                $userId = intval($parts[2] ?? 0);
-                
-                $purchase = PropertyPurchase::where('property_id', $propertyId)
-                    ->where('buyer_id', $userId)
-                    ->where('status', 'pending')
-                    ->first();
-                    
-                if ($purchase) {
-                    $purchase->update([
-                        'status' => 'failed',
-                        'metadata' => array_merge($purchase->metadata ?? [], [
-                            'error_message' => $obj['data']['message'] ?? 'Payment failed',
-                            'failed_at' => now()->toISOString()
-                        ])
-                    ]);
-                    
-                    // Reset property status
-                    $purchase->property->update([
-                        'status' => 'sale',
-                        'property_state' => 'Valid',
-                        'pending_buyer_id' => null,
-                    ]);
-                }
-            }
+        if ($purchase) {
+            $purchase->update([
+                'status' => 'failed',
+                'metadata' => array_merge($purchase->metadata ?? [], [
+                    'error_message' => $obj['data_message'] ?? 'Payment failed',
+                    'failed_at' => now()->toISOString()
+                ])
+            ]);
             
-            return [
-                'success' => false, // Payment failed
-                'message' => 'Payment failed - status updated',
-                'payment_success' => false
-            ];
+            // AUTOMATICALLY Reset property status to Valid so user can try again
+            $purchase->property->update([
+                'status' => 'sale',
+                'property_state' => 'Valid',
+                'pending_buyer_id' => null,
+            ]);
+            
+            \Log::info('Property reset to Valid after failed payment', [
+                'property_id' => $propertyId,
+                'purchase_id' => $purchase->id
+            ]);
         }
-
+    }
+    
+    return [
+        'success' => false,
+        'message' => 'Payment failed - property available for retry',
+        'payment_success' => false
+    ];
+}
         // ----------------------------
         // ✅ WALLET TOPUP
         // ----------------------------

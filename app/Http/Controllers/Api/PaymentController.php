@@ -101,7 +101,7 @@ public function handle(Request $request)
         }
 
         // Frontend URL construction
-        $frontendUrl = rtrim(env('FRONTEND_URL', 'http://localhost:3000'), '/');
+        $frontendUrl = rtrim(env('FRONTEND_URL', 'http://localhost:5173'), '/');
         
         if ($success && ($result['success'] ?? false)) {
             $successUrl = $frontendUrl . '/payment/success?' . http_build_query([
