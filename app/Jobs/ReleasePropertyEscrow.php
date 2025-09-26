@@ -15,7 +15,7 @@ use App\Notifications\EscrowReleasedBuyer;
 class ReleaseEscrows extends Command
 {
     protected $signature = 'escrow:release';
-    protected $description = 'Release locked property escrows after 24 hours if not cancelled';
+    protected $description = 'Release locked property escrows after 2 Minutes if not cancelled';
 
     public function handle()
     {
@@ -52,7 +52,7 @@ class ReleaseEscrows extends Command
                     'type'            => 'sale_income',
                     'ref_id'          => $purchase->id,
                     'ref_type'        => 'property_purchase',
-                    'description'     => 'Escrow released to seller after 24h',
+                    'description'     => 'Escrow released to seller after 2 minutes',
                     'balance_before'  => $before,
                     'balance_after'   => $wallet->balance,
                 ]);
@@ -70,7 +70,7 @@ class ReleaseEscrows extends Command
                 $escrow->update([
                     'status'         => 'released_to_seller',
                     'released_at'    => now(),
-                    'release_reason' => 'auto_release_after_24h'
+                    'release_reason' => 'auto_release_after_2M'
                 ]);
             });
 
