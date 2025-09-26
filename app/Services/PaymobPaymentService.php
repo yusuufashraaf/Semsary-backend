@@ -496,7 +496,7 @@ if (!$paymentSuccess) {
                     }
 
             $purchase->update([
-    'status'         => 'success',
+    'status'         => 'successful',
     'transaction_ref'=> $obj['id'] ?? $purchase->transaction_ref,
     'metadata'       => array_merge($purchase->metadata ?? [], ['paymob_txn' => $obj]),
 ]);
