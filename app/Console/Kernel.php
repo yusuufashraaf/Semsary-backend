@@ -48,7 +48,7 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping();
 
                 // Release property escrows automatically
-    $schedule->command('escrow:release')->everyMinute();
+$schedule->command('escrow:release')->everyMinute()->withoutOverlapping()->runInBackground();
 
     }
 

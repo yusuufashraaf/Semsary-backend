@@ -42,7 +42,7 @@ class UserController extends Controller
 
     public function notifications(int $id)
     {
-        return Notification::where('notifiable_id', $id)->get();
+        return UserNotification::where('user_id', $id)->get();
     }
 
     public function purchases(int $id)
