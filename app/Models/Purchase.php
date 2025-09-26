@@ -66,7 +66,7 @@ class Purchase extends Model
     // Scopes
     public function scopeSuccessful($query)
     {
-        return $query->where('status', 'successful');
+        return $query->where('status', 'success');
     }
 
     public function scopeRefunds($query)
