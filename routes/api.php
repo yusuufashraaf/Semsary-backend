@@ -162,7 +162,7 @@ Route::middleware(['auth:api'])->group(function () {
 Route::put('/admin/users/{id}/status/{status}', [App\Http\Controllers\Admin\UserController::class, 'updateState'])->middleware(['auth:api']);
 Route::put('/admin/users/{id}/id_state/{status}', [App\Http\Controllers\Admin\UserController::class, 'updateIdState'])->middleware(['auth:api']);
 Route::put('/admin/users/{id}/role/{status}', [App\Http\Controllers\Admin\UserController::class, 'updateRole'])->middleware(['auth:api']);
-// Admin routes 
+// Admin routes
 Route::prefix('admin')->middleware(['auth:api'])->group(function () {
     // Existing admin dashboard routes - SEM-60: Admin Dashboard API Implementation
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
@@ -179,7 +179,7 @@ Route::prefix('admin')->middleware(['auth:api'])->group(function () {
 
         // View users
         Route::get('/', [App\Http\Controllers\Admin\UserController::class, 'index']);
-        
+
 
         // User status management
         Route::put('/{id}/status/{status}', [App\Http\Controllers\Admin\UserController::class, 'updateState']);
@@ -249,6 +249,10 @@ Route::prefix('admin')->middleware(['auth:api'])->group(function () {
     });
 });
 
+Route::middleware(['auth:api', 'role:admin,agent'])->group(function () {
+    Route::get('/admin/users/{id}', [App\Http\Controllers\Admin\UserController::class, 'show']);
+});
+
 // SEM-65 CS Agent routes (for agents to manage their own assignments)
 Route::prefix('cs-agent')->middleware(['auth:api', 'role:agent'])->group(function () {
     // Get assigned properties (task queue)
@@ -265,6 +269,8 @@ Route::prefix('cs-agent')->middleware(['auth:api', 'role:agent'])->group(functio
 
     // Update verification status
     Route::patch('/properties/{property}/status', [PropertyVerificationController::class, 'update']);
+
+    Route::patch('/properties/{property}/state', [CsAgentPropertyController::class, 'updateState']);
 
     // Upload verification documents
     Route::post('/properties/{property}/documents', [PropertyDocumentController::class, 'store']);
