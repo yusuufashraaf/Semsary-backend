@@ -226,7 +226,7 @@ public function handle(Request $request)
                     'amount' => $purchase->amount,
                     'status' => 'locked',
                     'locked_at' => now(),
-                    'scheduled_release_at' => now()->addDays(3),
+                    'scheduled_release_at' => now()->addMinute(),
                 ]
             );
 
