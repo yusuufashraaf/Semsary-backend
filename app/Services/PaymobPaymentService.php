@@ -600,7 +600,7 @@ public function callBack(Request $request): array
             "amount_cents"        => $data['amount_cents'],
             "currency"            => $data['currency'],
             "order_id"            => $orderId,
-            "integration_id"      => $this->integrations_id[0],
+            "integration_id"      => 5306955,
             "lock_order_when_paid"=> true,
             "billing_data"        => [
                 "email"        => $data['user']->email ?? "no-reply@example.com",
@@ -618,7 +618,8 @@ public function callBack(Request $request): array
                 "state"        => "NA",
             ],
             "idempotency_key" => $data['idempotency_key'] ?? null,
-            "return_url"      => env("PAYMOB_RETURN_URL"),
+    "return_url" => env("PAYMOB_RETURN_URL"), 
+    "callback" => env("PAYMOB_CALLBACK_URL"), 
         ];
 
         $paymentResponse = $this->buildRequest('POST', '/api/acceptance/payment_keys', $paymentPayload);
