@@ -88,6 +88,7 @@ class PropertyListController extends Controller
         $listings = $properties->getCollection()->map(function ($property) {
             return [
                 'id' => (string) $property->id,
+                'owner_id'=> $property->owner_id,
                 'image' => $property->images->first()->image_url ?? null,
                 'title' => $property->title,
                 'bedrooms' => $property->bedrooms ?? null,

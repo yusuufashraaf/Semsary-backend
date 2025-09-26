@@ -427,7 +427,7 @@ class PropertyController extends Controller
     public function destroy(Property $property): JsonResponse
     {
         $user = auth('api')->user();
-        if ( $property->owner_id !== $user->id) {
+        if ( $property->owner_id !== $user->id || $property->property_state === 'Rented') {
             return response()->json([
                 'message' => 'You are not allowed to delete this property'
             ], 403);
@@ -494,13 +494,14 @@ class PropertyController extends Controller
                 $q->select('id', 'property_id', 'image_url')->orderBy('order_index')->limit(1);
             }
         ])
-            ->select('id', 'title', 'bedrooms', 'bathrooms', 'size', 'price')
+            ->select('id','owner_id', 'title', 'bedrooms', 'bathrooms', 'size', 'price')
             ->latest()
             ->take(3)
             ->get()
             ->map(function ($property) {
                 return [
                     'id' => $property->id,
+                    'owner_id'=> $property->owner_id,
                     'title' => $property->title,
                     'bedrooms' => $property->bedrooms,
                     'bathrooms' => $property->bathrooms,
