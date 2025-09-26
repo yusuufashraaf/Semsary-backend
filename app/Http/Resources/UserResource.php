@@ -14,6 +14,7 @@ class UserResource extends JsonResource
      *
      * @return array<string, mixed>
      */
+=======
     public function toArray(Request $request): array
     {
         // This array defines the exact structure of the JSON response.
