@@ -14,7 +14,7 @@ class UserResource extends JsonResource
      *
      * @return array<string, mixed>
      */
-    public function toArray(User $request): array
+    public function toArray(Request $request): array
     {
         // This array defines the exact structure of the JSON response.
         // Only include fields that are safe for the public to see.
