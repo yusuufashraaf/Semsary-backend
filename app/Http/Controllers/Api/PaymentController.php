@@ -232,7 +232,7 @@ public function handle(Request $request)
 
             // Update property status
             $purchase->property->update([
-                'status' => 'sold',
+                'status' => 'sale',
                 'property_state' => 'Sold',
                 'pending_buyer_id' => null,
             ]);
