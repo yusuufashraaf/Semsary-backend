@@ -440,7 +440,7 @@ if (!$paymentSuccess) {
 
             $purchase = Purchase::where('rent_request_id', $rentRequestId)
                 ->where('user_id', $userId)
-                ->whereIn('status', ['pending', 'pending_payment', 'pending'])
+                ->whereIn('status', ['pending', 'pending_payment'])
                 ->latest()
                 ->first();
 
@@ -496,7 +496,7 @@ if (!$paymentSuccess) {
                     }
 
             $purchase->update([
-    'status'         => 'paid',
+    'status'         => 'success',
     'transaction_ref'=> $obj['id'] ?? $purchase->transaction_ref,
     'metadata'       => array_merge($purchase->metadata ?? [], ['paymob_txn' => $obj]),
 ]);
