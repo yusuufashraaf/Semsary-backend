@@ -22,7 +22,7 @@ class ReleaseEscrows extends Command
         $now = now();
         $escrows = PropertyEscrow::with('purchase', 'purchase.property', 'purchase.seller', 'purchase.buyer')
             ->where('status', 'locked')
-            ->where('scheduled_release_at', '<=', $now)
+->where('created_at', '<=', now()->subMinutes(2))
             ->get();
 
         foreach ($escrows as $escrow) {

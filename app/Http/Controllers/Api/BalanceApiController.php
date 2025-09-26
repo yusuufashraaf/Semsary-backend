@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\PropertyEscrow;
 use App\Models\Wallet;
+use App\Models\EscrowBalance;
 use Illuminate\Http\Request;
 
 class BalanceApiController extends Controller
@@ -13,37 +14,50 @@ class BalanceApiController extends Controller
     {
         $user = $request->user();
 
-        // All escrows where user is buyer or seller
-        $escrows = PropertyEscrow::where(function ($q) use ($user) {
-                $q->where('buyer_id', $user->id)
-                  ->orWhere('seller_id', $user->id);
-            })
-            ->get();
-
-        // Locked funds (cannot use yet)
-        $locked = $escrows->where('status', 'locked')->sum('amount');
-
-        // Refundable funds (escrow ready to return/release)
-        $refundable = $escrows->filter(fn ($escrow) => $escrow->isReadyForRelease())->sum('amount');
-
-        // Total in escrow (locked + refundable)
-        $totalEscrow = $escrows->sum('amount');
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You must be logged in to view balances.',
+            ], 401);
+        }
 
         // Wallet balance
         $walletBalance = Wallet::where('user_id', $user->id)->value('balance') ?? 0;
 
-        // Available now = wallet + refundable
-        $availableNow = $walletBalance + $refundable;
+        // Locked (escrow still frozen)
+        $locked = PropertyEscrow::where('buyer_id', $user->id)
+            ->where('status', 'locked')
+            ->sum('amount');
 
-        // Total money in system = wallet + escrow
-        $totalMoney = $walletBalance + $totalEscrow;
+        // Refundable (ready to be released/returned)
+        $refundable = 0;
+
+        // Seller released funds
+        $refundable += PropertyEscrow::where('seller_id', $user->id)
+            ->where('status', 'released_to_seller')
+            ->sum('amount');
+
+        // Buyer refundable deposits
+        $refundable += PropertyEscrow::where('buyer_id', $user->id)
+            ->where('status', 'ready_for_refund') // adjust status name if needed
+            ->sum('amount');
+
+        // Rent escrow refunds
+        $refundable += EscrowBalance::where('user_id', $user->id)
+            ->where('status', 'released')
+            ->sum('total_amount');
+
+        // Totals
+        $availableNow = $walletBalance + $refundable;
+        $totalInSystem = $walletBalance + $locked + $refundable;
 
         return response()->json([
-            "available_now" => (float) $availableNow,           
-            "in_wallet" => (float) $walletBalance,              
-            "in_escrow_locked" => (float) $locked,              
-            "in_escrow_refundable" => (float) $refundable,      
-            "total_money" => (float) $totalMoney,               
+            "success"       => true,
+            "wallet"        => (float) $walletBalance,  
+            "locked"        => (float) $locked,         
+            "refundable"    => (float) $refundable,    
+            "available_now" => (float) $availableNow,   
+            "total_in_app"  => (float) $totalInSystem,  
         ]);
     }
 }
