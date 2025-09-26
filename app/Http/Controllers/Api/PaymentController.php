@@ -349,31 +349,38 @@ public function handle(Request $request)
      * Validate HMAC signature
      */
 private function validateHmac(Request $request)
-{
-    // Skip HMAC validation in development
-    if (env('APP_ENV') === 'local' || env('PAYMOB_IS_SANDBOX') === true || env('PAYMOB_IS_SANDBOX') === 'true') {
-        Log::info('HMAC validation skipped for development environment');
-        return true;
-    }
-    
-    $receivedHmac = $request->query('hmac') ?? $request->input('hmac');
-    
-    if (!$receivedHmac) {
-        Log::error('No HMAC provided in callback');
-        return false;
-    }
-    
-    $calculatedHmac = $this->calculateHmac($request);
-    
-    Log::info('HMAC validation details:', [
-        'received' => $receivedHmac,
-        'calculated' => $calculatedHmac,
-        'match' => hash_equals($receivedHmac, $calculatedHmac)
-    ]);
-    
-    return hash_equals($receivedHmac, $calculatedHmac);
-}
+   {
+       // Check if HMAC validation is disabled
+       if (env('PAYMOB_DISABLE_HMAC', false) === true || 
+           env('PAYMOB_DISABLE_HMAC', false) === 'true') {
+           Log::info('HMAC validation disabled via environment variable');
+           return true;
+       }
 
+       // Your existing development environment check
+       if (env('APP_ENV') === 'local' || env('PAYMOB_IS_SANDBOX') === true || env('PAYMOB_IS_SANDBOX') === 'true') {
+           Log::info('HMAC validation skipped for development environment');
+           return true;
+       }
+       
+       // Rest of your existing HMAC validation code...
+       $receivedHmac = $request->query('hmac') ?? $request->input('hmac');
+       
+       if (!$receivedHmac) {
+           Log::error('No HMAC provided in callback');
+           return false;
+       }
+       
+       $calculatedHmac = $this->calculateHmac($request);
+       
+       Log::info('HMAC validation details:', [
+           'received' => $receivedHmac,
+           'calculated' => $calculatedHmac,
+           'match' => hash_equals($receivedHmac, $calculatedHmac)
+       ]);
+       
+       return hash_equals($receivedHmac, $calculatedHmac);
+   }
     /**
      * Calculate HMAC signature using Paymob's method
      */
