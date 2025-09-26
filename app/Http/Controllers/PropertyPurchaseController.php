@@ -156,8 +156,8 @@ public function payForOwn(Request $request, $id)
 
                 $paymob = app(\App\Services\PaymobPaymentService::class);
 
-                // ❌ OLD: createOrder()  (don’t use it)
-                // ✅ FIX: just call createPaymentKey with merchant_order_id
+                //  OLD: createOrder()  (don’t use it)
+                //  FIX: just call createPaymentKey with merchant_order_id
                 $paymentKey = $paymob->createPaymentKey([
                     'amount_cents' => intval($shortfall * 100),
                     'currency'     => 'EGP',

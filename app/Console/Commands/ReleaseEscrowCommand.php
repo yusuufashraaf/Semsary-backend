@@ -13,36 +13,41 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 
 class ReleasePropertyEscrow implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected PropertyEscrow $escrow;
+    protected int $escrowId;
 
-    /**
-     * Create a new job instance.
-     */
-    public function __construct(PropertyEscrow $escrow)
+    public function __construct(int $escrowId)
     {
-        // Use withoutRelations to avoid serialization issues
-        $this->escrow = $escrow->withoutRelations();
+        $this->escrowId = $escrowId;
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle()
     {
         DB::transaction(function () {
-            // Reload escrow with relations
             $escrow = PropertyEscrow::with(['seller', 'buyer', 'propertyPurchase', 'property'])
-                ->findOrFail($this->escrow->id);
+                ->find($this->escrowId);
+
+            if (!$escrow) {
+                Log::warning("Escrow ID {$this->escrowId} not found, skipping release.");
+                return;
+            }
 
             $seller = $escrow->seller;
 
-            // Lock seller wallet for safe increment
+            if (!$seller) {
+                Log::error("Seller missing for escrow ID {$this->escrowId}");
+                return;
+            }
+
+            Log::info("Releasing escrow ID {$escrow->id} for seller ID {$seller->id}");
+
+            // Lock seller wallet
             $wallet = Wallet::lockForUpdate()->firstOrCreate(
                 ['user_id' => $seller->id],
                 ['balance' => 0]
@@ -55,7 +60,7 @@ class ReleasePropertyEscrow implements ShouldQueue
                 'wallet_id'      => $wallet->id,
                 'amount'         => $escrow->amount,
                 'type'           => 'sale_income',
-                'ref_id'         => $escrow->propertyPurchase->id,
+                'ref_id'         => $escrow->propertyPurchase?->id,
                 'ref_type'       => 'property_purchase',
                 'description'    => 'Escrow released to seller',
                 'balance_before' => $before,
@@ -69,9 +74,9 @@ class ReleasePropertyEscrow implements ShouldQueue
                 'release_reason' => 'buyer_did_not_cancel',
             ]);
 
-            $escrow->propertyPurchase->update(['status' => 'completed']);
+            $escrow->propertyPurchase?->update(['status' => 'completed']);
 
-            $escrow->property->update([
+            $escrow->property?->update([
                 'property_state'   => 'Sold',
                 'pending_buyer_id' => null,
             ]);
@@ -79,6 +84,8 @@ class ReleasePropertyEscrow implements ShouldQueue
             // Send notifications
             Notification::send($escrow->seller, new EscrowReleasedSeller($escrow));
             Notification::send($escrow->buyer, new EscrowReleasedBuyer($escrow));
+
+            Log::info("Escrow ID {$escrow->id} released successfully.");
         });
     }
 }
