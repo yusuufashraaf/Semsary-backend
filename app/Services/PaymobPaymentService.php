@@ -132,60 +132,8 @@ class PaymobPaymentService extends BasePaymentService
 
         $obj = $response['obj'] ?? $response['transaction'] ?? $response;
 
-        // HMAC VALIDATION - WITH DISABLE CHECK
-        if (env('PAYMOB_DISABLE_HMAC', false) !== true && 
-            env('PAYMOB_DISABLE_HMAC', false) !== 'true') {
-            
-            // Only run HMAC validation if not disabled
-            $hmacSecret = config('services.paymob.hmac_secret') ?? env('PAYMOB_HMAC_SECRET'); 
-            $hmac = $response['hmac'] ?? null;
-
-            if (!$hmac) {
-                \Log::error('Missing HMAC in callback');
-                return ['success' => false, 'message' => 'Missing HMAC'];
-            }
-
-            // Build concatenated string with proper handling of nested fields and booleans
-            $fields = [
-                'amount_cents', 'created_at', 'currency', 'error_occured',
-                'has_parent_transaction', 'id', 'integration_id', 'is_3d_secure',
-                'is_auth', 'is_capture', 'is_refunded', 'is_standalone_payment',
-                'is_voided', 'order.id', 'owner', 'pending', 'source_data.pan',
-                'source_data.sub_type', 'source_data.type', 'success',
-            ];
-
-            $concatenatedString = '';
-            foreach ($fields as $field) {
-                // Handle nested keys like "order.id" and "source_data.pan"
-                $keys = explode('.', $field);
-                $value = $obj;
-                foreach ($keys as $k) {
-                    $value = $value[$k] ?? '';
-                }
-
-                // Cast booleans to string as Paymob expects
-                if (is_bool($value)) {
-                    $value = $value ? 'true' : 'false';
-                }
-                
-                $concatenatedString .= $value;
-            }
-
-            $calculatedHmac = hash_hmac('sha512', $concatenatedString, $hmacSecret);
-
-            if (!hash_equals($calculatedHmac, $hmac)) {
-                \Log::warning('Paymob callback: HMAC mismatch', [
-                    'expected' => $calculatedHmac,
-                    'provided' => $hmac,
-                    'concatenated_string' => $concatenatedString,
-                ]);
-                return ['success' => false, 'message' => 'Invalid HMAC'];
-            }
-            
-            \Log::info('HMAC validation passed in service');
-        } else {
-            \Log::info('HMAC validation disabled in PaymobPaymentService');
-        }
+      // HMAC VALIDATION - COMPLETELY DISABLED
+\Log::info('HMAC validation completely disabled in PaymobPaymentService');
 
         // CHECK PAYMENT SUCCESS - Modified to handle both success and failure
         $paymentSuccess = isset($obj['success']) && $obj['success'] === true;

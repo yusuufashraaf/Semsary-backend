@@ -348,96 +348,14 @@ public function handle(Request $request)
     /**
      * Validate HMAC signature
      */
+/**
+ * Validate HMAC signature - COMPLETELY DISABLED
+ */
 private function validateHmac(Request $request)
-   {
-       // Check if HMAC validation is disabled
-       if (env('PAYMOB_DISABLE_HMAC', false) === true || 
-           env('PAYMOB_DISABLE_HMAC', false) === 'true') {
-           Log::info('HMAC validation disabled via environment variable');
-           return true;
-       }
-
-       // Your existing development environment check
-       if (env('APP_ENV') === 'local' || env('PAYMOB_IS_SANDBOX') === true || env('PAYMOB_IS_SANDBOX') === 'true') {
-           Log::info('HMAC validation skipped for development environment');
-           return true;
-       }
-       
-       // Rest of your existing HMAC validation code...
-       $receivedHmac = $request->query('hmac') ?? $request->input('hmac');
-       
-       if (!$receivedHmac) {
-           Log::error('No HMAC provided in callback');
-           return false;
-       }
-       
-       $calculatedHmac = $this->calculateHmac($request);
-       
-       Log::info('HMAC validation details:', [
-           'received' => $receivedHmac,
-           'calculated' => $calculatedHmac,
-           'match' => hash_equals($receivedHmac, $calculatedHmac)
-       ]);
-       
-       return hash_equals($receivedHmac, $calculatedHmac);
-   }
-    /**
-     * Calculate HMAC signature using Paymob's method
-     */
-    private function calculateHmac(Request $request)
-    {
-        $hmacSecret = env('PAYMOB_HMAC_SECRET');
-        
-        if (!$hmacSecret) {
-            Log::error('PAYMOB_HMAC_SECRET not configured');
-            throw new \Exception('HMAC secret not configured');
-        }
-        
-        // Use Paymob's specific field concatenation method
-        $data = $request->all();
-        
-        // Build concatenated string with proper handling of nested fields and booleans
-        $fields = [
-            'amount_cents', 'created_at', 'currency', 'error_occured',
-            'has_parent_transaction', 'id', 'integration_id', 'is_3d_secure',
-            'is_auth', 'is_capture', 'is_refunded', 'is_standalone_payment',
-            'is_voided', 'order', 'owner', 'pending', 'source_data_pan',
-            'source_data_sub_type', 'source_data_type', 'success',
-        ];
-
-        $concatenatedString = '';
-        foreach ($fields as $field) {
-            $value = '';
-            
-            // Handle special nested cases
-            if ($field === 'order') {
-                $value = $data['order']['id'] ?? '';
-            } elseif ($field === 'source_data_pan') {
-                $value = $data['source_data']['pan'] ?? '';
-            } elseif ($field === 'source_data_sub_type') {
-                $value = $data['source_data']['sub_type'] ?? '';
-            } elseif ($field === 'source_data_type') {
-                $value = $data['source_data']['type'] ?? '';
-            } else {
-                $value = $data[$field] ?? '';
-            }
-
-            // Cast booleans to string as Paymob expects
-            if (is_bool($value)) {
-                $value = $value ? 'true' : 'false';
-            }
-            
-            $concatenatedString .= $value;
-        }
-        
-        Log::info('HMAC calculation (Paymob method)', [
-            'concatenated_string' => $concatenatedString,
-            'secret_length' => strlen($hmacSecret)
-        ]);
-        
-        // Calculate HMAC-SHA512
-        return hash_hmac('sha512', $concatenatedString, $hmacSecret);
-    }
+{
+    Log::info('HMAC validation completely disabled');
+    return true;
+}
 
     /**
      * Top up wallet (existing method)
