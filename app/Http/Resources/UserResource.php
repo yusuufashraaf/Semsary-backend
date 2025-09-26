@@ -26,7 +26,7 @@ class UserResource extends JsonResource
             'phone_number' => $this->phone_number,
             'role'         => $this->role,
             'id_image_url'         => $this->id_image_url,
-            'id_state'         => $this->id_stat,
+            'id_state'         => $this->id_state,
             'status'       => $this->status,
             'created_at'   => $this->created_at?->toDateTimeString(), // Format dates for consistency
             'email_verified_at' => $this->email_verified_at?->format('Y-m-d H:i:s'),
