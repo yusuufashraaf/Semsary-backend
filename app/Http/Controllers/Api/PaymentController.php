@@ -8,6 +8,7 @@ use App\Models\PropertyPurchase;
 use App\Models\PropertyEscrow;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Notifications\PropertyPurchaseSuccessful;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -243,12 +244,12 @@ public function handle(Request $request)
                 'escrow_id' => $escrow->id
             ]);
 
-            // Send notifications
+            // Send notifications - Only PropertyPurchaseSuccessful
             try {
-                $buyerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
+                $buyerNotification = new PropertyPurchaseSuccessful($purchase);
                 \Notification::send($purchase->buyer, $buyerNotification);
 
-                $sellerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
+                $sellerNotification = new PropertyPurchaseSuccessful($purchase);
                 \Notification::send($purchase->seller, $sellerNotification);
             } catch (\Exception $e) {
                 Log::warning('Notification failed for property purchase', [
@@ -346,16 +347,13 @@ public function handle(Request $request)
     }
 
     /**
-     * Validate HMAC signature
+     * Validate HMAC signature - COMPLETELY DISABLED
      */
-/**
- * Validate HMAC signature - COMPLETELY DISABLED
- */
-private function validateHmac(Request $request)
-{
-    Log::info('HMAC validation completely disabled');
-    return true;
-}
+    private function validateHmac(Request $request)
+    {
+        Log::info('HMAC validation completely disabled');
+        return true;
+    }
 
     /**
      * Top up wallet (existing method)
