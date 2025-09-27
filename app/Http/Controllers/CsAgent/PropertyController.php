@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\CsAgent;
 
+use App\Events\PropertyUpdated;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Admin\CSAgentAssignmentResource;
 use App\Http\Resources\CsAgent\PropertyDetailResource;
@@ -110,6 +111,7 @@ public function updateState(Request $request, Property $property): JsonResponse
                 new PropertyFeedbackNotification($property, $request->status, $request->feedback ?? '')
             );
         }
+        broadcast(new PropertyUpdated($property))->toOthers();
 
         return response()->json([
             'success' => true,
