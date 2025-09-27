@@ -219,17 +219,33 @@ public function payForOwn(Request $request, $id)
             ]);
 
             // 🔔 Notifications
-            try {
-                $buyerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
-                \Notification::send($user, $buyerNotification);
+try {
+    $buyerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
+    \Notification::send($user, $buyerNotification);
+    
+    // Add this for buyer
+    $this->createUserNotificationFromWebsocketData(
+        $user,
+        $buyerNotification,
+        NotificationPurpose::PURCHASE_COMPLETED,
+        null
+    );
 
-                $sellerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
-                \Notification::send($purchase->seller, $sellerNotification);
-            } catch (\Exception $e) {
-                \Log::warning('Notification failed on payForOwn success', [
-                    'error' => $e->getMessage()
-                ]);
-            }
+    $sellerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
+    \Notification::send($purchase->seller, $sellerNotification);
+    
+    // Add this for seller
+    $this->createUserNotificationFromWebsocketData(
+        $purchase->seller,
+        $sellerNotification,
+        NotificationPurpose::PROPERTY_PURCHASE_REQUESTED,
+        $user->id
+    );
+} catch (\Exception $e) {
+    \Log::warning('Notification failed on payForOwn success', [
+        'error' => $e->getMessage()
+    ]);
+}
 
             return $this->success('Purchase successful via wallet.', [
                 'purchase'       => $purchase,
@@ -277,18 +293,34 @@ public function cancelPurchase(Request $request, $purchaseId)
             'pending_buyer_id' => null,
         ]);
 
-        try {
-            $buyerNotification = new \App\Notifications\PropertyPurchaseCancelled($purchase);
-            Notification::send($user, $buyerNotification);
+// Case 2: Escrow exists and is locked - ADD THE MISSING CALLS HERE
+try {
+    $buyerNotification = new \App\Notifications\PropertyPurchaseCancelled($purchase);
+    Notification::send($user, $buyerNotification);
+    
+    // ADD THIS
+    $this->createUserNotificationFromWebsocketData(
+        $user,
+        $buyerNotification,
+        NotificationPurpose::PURCHASE_CANCELLED,
+        null
+    );
 
-            $sellerNotification = new \App\Notifications\PurchaseCancelledByBuyer($purchase);
-            Notification::send($purchase->seller, $sellerNotification);
-        } catch (\Exception $e) {
-            Log::warning('Notification failed on cancelPurchase (pending)', [
-                'error' => $e->getMessage()
-            ]);
-        }
-
+    $sellerNotification = new \App\Notifications\PurchaseCancelledByBuyer($purchase);
+    Notification::send($purchase->seller, $sellerNotification);
+    
+    // ADD THIS  
+    $this->createUserNotificationFromWebsocketData(
+        $purchase->seller,
+        $sellerNotification,
+        NotificationPurpose::PURCHASE_CANCELLED,
+        $user->id
+    );
+} catch (\Exception $e) {
+    Log::warning('Notification failed on cancelPurchase (escrow)', [
+        'error' => $e->getMessage()
+    ]);
+}
         return $this->success('Pending purchase cancelled successfully.');
     }
 

@@ -40,10 +40,30 @@ class UserController extends Controller
             });
     }
 
-    public function notifications(int $id)
-    {
-        return UserNotification::where('user_id', $id)->get();
-    }
+
+public function notifications(int $id)
+{
+    $notifications = Notification::where('notifiable_id', $id)
+        ->where('notifiable_type', User::class)
+        ->orderBy('created_at', 'desc')
+        ->get()
+        ->map(function($n) {
+            $data = json_decode($n->data, true) ?? [];
+            return [
+                'id' => (string)$n->id, // ✅ cast to string to be explicit
+                'user_id' => $n->notifiable_id,
+                'title' => $data['title'] ?? 'Notification',
+                'message' => $data['message'] ?? '',
+                'feedback' => $data['feedback'] ?? null,
+                'is_read' => $n->read_at !== null,
+                'created_at' => $n->created_at->toDateTimeString(),
+                'updated_at' => $n->updated_at->toDateTimeString(),
+                'property_id' => $data['property_id'] ?? null,
+            ];
+        });
+
+    return response()->json($notifications);
+}
 
     public function purchases(int $id)
     {
@@ -73,19 +93,16 @@ class UserController extends Controller
             });
     }
 
-    public function markAsRead(int $id, int $notificationId)
+    public function markAsRead(int $id, string $notificationId)
     {
-        $notification = Notification::where('id', $notificationId)
-            ->where('notifiable_id', $id)
-            ->first();
+        $user = User::findOrFail($id);
+        $notification = $user->notifications()->where('id', $notificationId)->first();
 
         if (!$notification) {
-            return response()->json([
-                'message' => 'Notification not found'
-            ], 404);
+            return response()->json(['message' => 'Notification not found'], 404);
         }
 
-        $notification->update(['read_at' => now()]);
+        $notification->markAsRead();
 
         return response()->json([
             'message' => 'Notification marked as read',
@@ -107,7 +124,7 @@ class UserController extends Controller
         try {
             // Find the user
             $user = User::find($id);
-            
+
             if (!$user) {
                 return response()->json([
                     'status' => 'error',
