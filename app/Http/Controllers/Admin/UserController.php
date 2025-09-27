@@ -313,6 +313,9 @@ public function changeRole(Request $request, int $id): JsonResponse
     // ✅ Just update the role in the users table
     $user->update(['role' => $request->role]);
 
+
+    event(new \App\Events\UserUpdated($user));
+
     return response()->json([
         'status' => 'success',
         'message' => "User role updated successfully to {$request->role}",
@@ -334,7 +337,7 @@ public function updateState($id, $status)
     try {
         // Find the user
         $user = User::find($id);
-        
+
         if (!$user) {
             return response()->json([
                 'status' => 'error',
@@ -354,12 +357,12 @@ public function updateState($id, $status)
 
         // CORRECT WAY: Update using array or direct assignment
         if($missingdata && $status == "active"){
-            $user->update(['status' => 'pending']);    
+            $user->update(['status' => 'pending']);
         }
         else{
-            $user->update(['status' => $status]);    
+            $user->update(['status' => $status]);
         }
-        
+        event(new \App\Events\UserUpdated($user));
         // OR alternative correct way:
         // $user->status = $status;
         // $user->save();
@@ -408,7 +411,7 @@ public function updateIdState($id, $status)
     try {
         // Find the user
         $user = User::find($id);
-        
+
         if (!$user) {
             return response()->json([
                 'status' => 'error',
@@ -418,7 +421,8 @@ public function updateIdState($id, $status)
 
         // CORRECT WAY: Update using array or direct assignment
         $user->update(['id_state' => $status]);
-        
+
+        event(new \App\Events\UserUpdated($user));
         // OR alternative correct way:
         // $user->status = $status;
         // $user->save();
@@ -519,7 +523,7 @@ public function updateRole($id, $status)
     try {
         // Find the user
         $user = User::find($id);
-        
+
         if (!$user) {
             return response()->json([
                 'status' => 'error',
@@ -529,7 +533,8 @@ public function updateRole($id, $status)
 
         // CORRECT WAY: Update using array or direct assignment
         $user->update(['role' => $status]);
-        
+
+        event(new \App\Events\UserUpdated($user));
         // OR alternative correct way:
         // $user->status = $status;
         // $user->save();
@@ -673,11 +678,5 @@ $dbnotification = UserNotification::create([
             'admin_id' => auth('api')->id(),
             'message' => $request->message ?? 'No message provided'
         ]);
+}
 
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Failed to send notification: ' . $e->getMessage()
-        ], 500);
-    }
-}
-}
