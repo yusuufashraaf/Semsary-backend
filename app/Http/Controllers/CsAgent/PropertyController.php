@@ -8,6 +8,7 @@ use App\Http\Resources\CsAgent\PropertyDetailResource;
 use App\Models\CSAgentPropertyAssign;
 use App\Models\Property;
 use App\Models\AuditLog;
+use App\Notifications\PropertyFeedbackNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -96,11 +97,19 @@ public function updateState(Request $request, Property $property): JsonResponse
 {
     $request->validate([
         'status' => 'required|string|in:Valid,Rejected',
+        'feedback' => 'nullable|string|max:500',
     ]);
 
     try {
         $property->property_state = $request->input('status');
         $property->save();
+
+
+         if ($property->owner) {
+            $property->owner->notify(
+                new PropertyFeedbackNotification($property, $request->status, $request->feedback ?? '')
+            );
+        }
 
         return response()->json([
             'success' => true,

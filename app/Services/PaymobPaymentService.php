@@ -15,7 +15,10 @@ use App\Models\PropertyEscrow;
 use App\Models\EscrowBalance;
 use App\Models\RentRequest;
 use Illuminate\Support\Facades\Notification;
-
+use Carbon\Carbon;
+use App\Models\Property;
+use App\Models\UserNotification;
+use App\Enums\NotificationPurpose;
 class PaymobPaymentService extends BasePaymentService
 {
     protected $api_key;
@@ -31,6 +34,40 @@ class PaymobPaymentService extends BasePaymentService
         ];
         $this->integrations_id = [env("PAYMOB_INTEGRATION_ID")]; 
     }
+    private function createUserNotificationFromWebsocketData(
+    $recipient,
+    $notificationClass,
+    NotificationPurpose $purpose,
+    $senderId = null
+) {
+    try {
+        $notificationData = null;
+        if (method_exists($notificationClass, 'toDatabase')) {
+            $notificationData = $notificationClass->toDatabase($recipient);
+        } elseif (method_exists($notificationClass, 'toBroadcast')) {
+            $broadcastData = $notificationClass->toBroadcast($recipient);
+            $notificationData = $broadcastData->data ?? $broadcastData;
+        }
+
+        $entityId = $notificationData['purchase_id'] ?? $notificationData['property_id'] ?? $notificationData['rent_request_id'] ?? null;
+        $message  = $notificationData['message'] ?? 'New notification';
+
+        UserNotification::create([
+            'user_id'   => $recipient->id,
+            'sender_id' => $senderId,
+            'entity_id' => $entityId,
+            'purpose'   => $purpose,
+            'title'     => $purpose->label(),
+            'message'   => $message,
+            'is_read'   => false,
+        ]);
+    } catch (Exception $e) {
+        Log::warning('Failed to create UserNotification in webhook', [
+            'error' => $e->getMessage(),
+            'recipient_id' => $recipient->id ?? null,
+        ]);
+    }
+}
 
     // ----------------- AUTH -----------------
     protected function generateToken()
@@ -343,12 +380,29 @@ if (!$paymentSuccess) {
                             'pending_buyer_id' => null,
                         ]);
 
-                        try {
-                            \Notification::send($purchase->buyer, new \App\Notifications\PropertyPurchaseSuccessful($purchase));
-                            \Notification::send($purchase->seller, new \App\Notifications\PropertyPurchaseSuccessful($purchase));
-                        } catch (\Exception $e) {
-                            \Log::warning('Notification failed on Paymob callback (buy)', ['error' => $e->getMessage()]);
-                        }
+                       try {
+    $buyerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
+    \Notification::send($purchase->buyer, $buyerNotification);
+    
+    $this->createUserNotificationFromWebsocketData(
+        $purchase->buyer,
+        $buyerNotification,
+        NotificationPurpose::PURCHASE_COMPLETED,
+        null
+    );
+
+    $sellerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
+    \Notification::send($purchase->seller, $sellerNotification);
+    
+    $this->createUserNotificationFromWebsocketData(
+        $purchase->seller,
+        $sellerNotification,
+        NotificationPurpose::PROPERTY_PURCHASE_REQUESTED,
+        $purchase->buyer_id
+    );
+} catch (\Exception $e) {
+    \Log::warning('Notification failed on Paymob callback (buy)', ['error' => $e->getMessage()]);
+}
                     });
 
                     \Log::info('Buy flow completed successfully', ['purchase_id' => $purchase->id]);
@@ -413,8 +467,32 @@ if (!$paymentSuccess) {
                         }
                     });
 
-                    return ['success' => true, 'message' => 'Property purchase processed (purchase-)', 'purchase_id' => $purchase->id];
-                }
+// Add notifications before the return
+try {
+    $buyerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
+    \Notification::send($purchase->buyer, $buyerNotification);
+    
+    $this->createUserNotificationFromWebsocketData(
+        $purchase->buyer,
+        $buyerNotification,
+        NotificationPurpose::PURCHASE_COMPLETED,
+        null
+    );
+
+    $sellerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
+    \Notification::send($purchase->seller, $sellerNotification);
+    
+    $this->createUserNotificationFromWebsocketData(
+        $purchase->seller,
+        $sellerNotification,
+        NotificationPurpose::PROPERTY_PURCHASE_REQUESTED,
+        $purchase->buyer_id
+    );
+} catch (\Exception $e) {
+    \Log::warning('Notification failed on purchase- callback', ['error' => $e->getMessage()]);
+}
+
+return ['success' => true, 'message' => 'Property purchase processed (purchase-)', 'purchase_id' => $purchase->id];                }
             } catch (\Throwable $e) {
                 \Log::error('Error processing buy/purchase callback', [
                     'error' => $e->getMessage(),
@@ -456,12 +534,32 @@ if (!$paymentSuccess) {
                     \Log::error('Rent request not found', ['rent_request_id' => $rentRequestId]);
                     return ['success' => false, 'message' => 'Rent request not found'];
                 }
+                    $checkIn  = Carbon::parse($rentRequest->check_in);
+    $checkOut = Carbon::parse($rentRequest->check_out);
+    $days     = max(1, $checkIn->diffInDays($checkOut));
+
+    $property = Property::find($rentRequest->property_id);
+    if (!$property) {
+        \Log::error('Property not found', ['property_id' => $rentRequest->property_id]);
+        return ['success' => false, 'message' => 'Property not found'];
+    }
+
+    $pricePerNight = $property->price_per_night ?? $property->price ?? $property->daily_rent ??0;
+    if (!$pricePerNight || $pricePerNight <= 0) {
+        \Log::error('Property pricing not configured', ['property_id' => $property->id]);
+        return ['success' => false, 'message' => 'Property pricing not configured'];
+    }
+
+$rentAmount    = ($pricePerNight ?? 0) * ($days ?? 1);
+$depositAmount = $pricePerNight ?? 0;
+$totalAmount   = bcadd($rentAmount ?? 0, $depositAmount ?? 0, 2);
+
                 $purchase = Purchase::create([
                     'user_id'        => $userId,
                     'property_id'    => $rentRequest->property_id,
                     'rent_request_id'=> $rentRequest->id,
-                    'amount'         => $rentRequest->total_price ?? ($rentRequest->nights * $rentRequest->price_per_night),
-                    'deposit_amount' => $rentRequest->price_per_night ?? 0,
+                    'amount'         => $totalAmount ?? 0,
+                    'deposit_amount' => $depositAmount ?? 0,
                     'payment_type'   => 'rent',
                     'status'         => 'pending',
                     'payment_gateway'=> 'paymob',
@@ -511,6 +609,7 @@ if (!$paymentSuccess) {
                         ['rent_request_id' => $purchase->rent_request_id],
                         [
                             'user_id'       => $purchase->user_id,
+                            'owner_id'      => $rentRequest->property->owner_id,
                             'rent_amount'   => $rentAmount,
                             'deposit_amount'=> $depositAmount,
                             'total_amount'  => $totalAmount,
@@ -523,12 +622,29 @@ if (!$paymentSuccess) {
                         $rentRequest->update(['status' => 'paid']);
                     }
 
-                    try {
-                        Notification::send($rentRequest->property->owner, new \App\Notifications\RentPaidByRenter($rentRequest));
-                        Notification::send($rentRequest->user, new \App\Notifications\RentPaymentSuccessful($rentRequest));
-                    } catch (\Exception $e) {
-                        Log::warning('Notifications failed on rent callback', ['error' => $e->getMessage()]);
-                    }
+                   try {
+    $ownerNotification = new \App\Notifications\RentPaidByRenter($rentRequest);
+    Notification::send($rentRequest->property->owner, $ownerNotification);
+    
+    $this->createUserNotificationFromWebsocketData(
+        $rentRequest->property->owner,
+        $ownerNotification,
+        NotificationPurpose::PAYMENT_SUCCESSFUL,
+        $purchase->user_id
+    );
+
+    $renterNotification = new \App\Notifications\RentPaymentSuccessful($rentRequest);
+    Notification::send($rentRequest->user, $renterNotification);
+    
+    $this->createUserNotificationFromWebsocketData(
+        $rentRequest->user,
+        $renterNotification,
+        NotificationPurpose::PAYMENT_SUCCESSFUL,
+        null
+    );
+} catch (\Exception $e) {
+    Log::warning('Notifications failed on rent callback', ['error' => $e->getMessage()]);
+}
                 });
 
                 \Log::info('Rent flow completed successfully', [
