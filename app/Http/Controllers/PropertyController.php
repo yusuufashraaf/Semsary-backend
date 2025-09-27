@@ -97,6 +97,23 @@ class PropertyController extends Controller
     public function store(StorePropertyRequest $request): JsonResponse
     {
         $data = $request->validated();
+        
+        if (isset($data['price_type'])) {
+            if (strtolower($data['price_type']) === '[FullPay') {
+                $data['status'] = 'sale';
+            } elseif (strtolower($data['price_type']) === 'Daily') {
+                $data['status'] = 'rent';
+            }
+        }
+
+        if (isset($data['status'])) {
+            if (strtolower($data['status']) === 'sale') {
+                $data['price_type'] = 'FullPay';
+            } elseif (strtolower($data['status']) === 'rent') {
+                $data['price_type'] = 'Daily';
+            }
+        }
+        
         $data['owner_id'] = auth('api')->id();
 
         $property = Property::create($data);
@@ -233,6 +250,28 @@ class PropertyController extends Controller
     public function update(UpdatePropertyRequest $request, Property $property): JsonResponse
     {
         $data = $request->validated();
+
+        if (isset($data['price_type'])) {
+            if (strtolower($data['price_type']) === '[FullPay') {
+                $data['status'] = 'sale';
+            } elseif (strtolower($data['price_type']) === 'Daily') {
+                $data['status'] = 'rent';
+            }
+        }
+
+        if (isset($data['status'])) {
+            if (strtolower($data['status']) === 'sale') {
+                $data['price_type'] = 'FullPay';
+            } elseif (strtolower($data['status']) === 'rent') {
+                $data['price_type'] = 'Daily';
+            }
+        }
+
+        if ($data['price_type'] === 'FullPay') {
+        $data['status'] = 'sale';
+        } elseif ($data['price_type'] === 'Daily') {
+            $data['status'] = 'rent';
+        }
 
         $user = auth('api')->user();
 
