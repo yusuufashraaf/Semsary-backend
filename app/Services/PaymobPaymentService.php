@@ -380,20 +380,24 @@ if (!$paymentSuccess) {
                             'pending_buyer_id' => null,
                         ]);
 
-                       try {
-    $buyerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
-    \Notification::send($purchase->buyer, $buyerNotification);
-    
+
+// Declare notification objects
+$buyerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
+$sellerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
+
+// Always create database notifications first
+try {
     $this->createUserNotificationFromWebsocketData(
         $purchase->buyer,
         $buyerNotification,
         NotificationPurpose::PURCHASE_COMPLETED,
         null
     );
+} catch (\Exception $e) {
+    \Log::warning('Failed to create buyer database notification', ['error' => $e->getMessage()]);
+}
 
-    $sellerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
-    \Notification::send($purchase->seller, $sellerNotification);
-    
+try {
     $this->createUserNotificationFromWebsocketData(
         $purchase->seller,
         $sellerNotification,
@@ -401,9 +405,18 @@ if (!$paymentSuccess) {
         $purchase->buyer_id
     );
 } catch (\Exception $e) {
-    \Log::warning('Notification failed on Paymob callback (buy)', ['error' => $e->getMessage()]);
+    \Log::warning('Failed to create seller database notification', ['error' => $e->getMessage()]);
+}
+
+// Try Pusher notifications separately
+try {
+    \Notification::send($purchase->buyer, $buyerNotification);
+    \Notification::send($purchase->seller, $sellerNotification);
+} catch (\Exception $e) {
+    \Log::warning('Pusher notification failed on Paymob callback (buy)', ['error' => $e->getMessage()]);
 }
                     });
+
 
                     \Log::info('Buy flow completed successfully', ['purchase_id' => $purchase->id]);
                     return ['success' => true, 'message' => 'Property purchase confirmed', 'purchase_id' => $purchase->id];
@@ -467,27 +480,37 @@ if (!$paymentSuccess) {
                         }
                     });
 
-// Add notifications before the return
+// Declare notification objects
+$buyerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
+$sellerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
+
+// Always create database notifications first
 try {
-    $buyerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
-    \Notification::send($purchase->buyer, $buyerNotification);
-    
     $this->createUserNotificationFromWebsocketData(
         $purchase->buyer,
         $buyerNotification,
         NotificationPurpose::PURCHASE_COMPLETED,
         null
     );
+} catch (\Exception $e) {
+    \Log::warning('Failed to create buyer database notification', ['error' => $e->getMessage()]);
+}
 
-    $sellerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
-    \Notification::send($purchase->seller, $sellerNotification);
-    
+try {
     $this->createUserNotificationFromWebsocketData(
         $purchase->seller,
         $sellerNotification,
         NotificationPurpose::PROPERTY_PURCHASE_REQUESTED,
         $purchase->buyer_id
     );
+} catch (\Exception $e) {
+    \Log::warning('Failed to create seller database notification', ['error' => $e->getMessage()]);
+}
+
+// Try Pusher notifications separately
+try {
+    \Notification::send($purchase->buyer, $buyerNotification);
+    \Notification::send($purchase->seller, $sellerNotification);
 } catch (\Exception $e) {
     \Log::warning('Notification failed on purchase- callback', ['error' => $e->getMessage()]);
 }
