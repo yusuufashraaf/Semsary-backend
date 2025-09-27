@@ -45,6 +45,7 @@ class UserUpdated implements ShouldBroadcast
             "role"          => $this->user->role,
             "status"        => $this->user->status,
             "idUpladed"     => $this->user->id_document_path,
+            'id_state'        => $this->user->id_state,
         ];
     }
 }

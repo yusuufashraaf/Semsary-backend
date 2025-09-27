@@ -30,14 +30,13 @@ class ImageOfId extends Controller
         }
 
         $user = User::find($request->user_id);
-
-
-        if ($user->id_image_url) {
-            return response()->json(['message' => 'An ID image has already been uploaded for this user.'], 409); // 409 Conflict
-        }
-
         $file = $request->file('id_image');
         $folder = 'user_ids';
+
+        // ✅ If user already has an image, delete old one first
+        if ($user->id_image_public_id) {
+            $cloudinaryService->deleteFile($user->id_image_public_id);
+        }
 
         $uploadResult = $cloudinaryService->uploadFile($file, $folder);
 
@@ -48,8 +47,9 @@ class ImageOfId extends Controller
             ], 500);
         }
 
+        // ✅ Update with new image (URL + public_id)
         $user->update([
-            'id_image_url' => $uploadResult['url']
+            'id_image_url' => $uploadResult['url'],
         ]);
 
         return response()->json([
@@ -57,5 +57,4 @@ class ImageOfId extends Controller
             'url' => $uploadResult['url']
         ]);
     }
-
 }

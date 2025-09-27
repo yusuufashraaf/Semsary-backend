@@ -12,6 +12,7 @@ use App\Http\Resources\Admin\UserStatisticsResource;
 use App\Http\Resources\Admin\AdminActionResource;
 use App\Notifications\CustomMessage;
 use App\Enums\NotificationPurpose;
+use App\Events\UserUpdated;
 use App\Models\User;
 use App\Models\UserNotification;
 use Illuminate\Http\Request;
@@ -314,7 +315,7 @@ public function changeRole(Request $request, int $id): JsonResponse
     $user->update(['role' => $request->role]);
 
 
-    event(new \App\Events\UserUpdated($user));
+    broadcast(new UserUpdated($user));
 
     return response()->json([
         'status' => 'success',
@@ -362,7 +363,7 @@ public function updateState($id, $status)
         else{
             $user->update(['status' => $status]);
         }
-        event(new \App\Events\UserUpdated($user));
+        broadcast(new UserUpdated($user));
         // OR alternative correct way:
         // $user->status = $status;
         // $user->save();
@@ -422,7 +423,7 @@ public function updateIdState($id, $status)
         // CORRECT WAY: Update using array or direct assignment
         $user->update(['id_state' => $status]);
 
-        event(new \App\Events\UserUpdated($user));
+        broadcast(new UserUpdated($user));
         // OR alternative correct way:
         // $user->status = $status;
         // $user->save();
@@ -464,13 +465,14 @@ public function deleteUser($id)
     try {
         // Find the user
         $user = User::find($id);
-        
+
         if (!$user) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'User not found'
             ], 404);
         }
+
 
         // Store user info for logging before deletion
         $userInfo = [
@@ -481,7 +483,7 @@ public function deleteUser($id)
 
         // Delete the user
         $user->delete();
-        
+
         // Log the action
         Log::info("User deleted", [
             'admin_id' => auth('api')->id(),
@@ -534,7 +536,7 @@ public function updateRole($id, $status)
         // CORRECT WAY: Update using array or direct assignment
         $user->update(['role' => $status]);
 
-        event(new \App\Events\UserUpdated($user));
+       broadcast(new UserUpdated($user));
         // OR alternative correct way:
         // $user->status = $status;
         // $user->save();
@@ -577,7 +579,7 @@ public function verifyAdmin($id)
     try {
         // Find the user
         $user = User::find($id);
-        
+
         if (!$user) {
             return response()->json([
                 'status' => 'error',
@@ -593,7 +595,7 @@ public function verifyAdmin($id)
             "id_state" => "valid"
 
     ]);
-        
+
         // OR alternative correct way:
         // $user->status = $status;
         // $user->save();
@@ -632,7 +634,7 @@ public function notifyUser(Request $request, int $id)
 {
     try {
         $user = User::find($id);
-        
+
         if (!$user) {
             return response()->json([
                 'status' => 'error',
@@ -654,7 +656,7 @@ $dbnotification = UserNotification::create([
     'message' => $request->message,
     'is_read' => false,
 ]);
-        
+
         // Log the action
         Log::info("User notified", [
             'admin_id' => $Admin->id,
@@ -678,5 +680,7 @@ $dbnotification = UserNotification::create([
             'admin_id' => auth('api')->id(),
             'message' => $request->message ?? 'No message provided'
         ]);
+    }
+    }
 }
 
