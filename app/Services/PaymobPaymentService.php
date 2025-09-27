@@ -15,7 +15,8 @@ use App\Models\PropertyEscrow;
 use App\Models\EscrowBalance;
 use App\Models\RentRequest;
 use Illuminate\Support\Facades\Notification;
-
+use Carbon\Carbon;
+use App\Models\Property;
 class PaymobPaymentService extends BasePaymentService
 {
     protected $api_key;
@@ -456,12 +457,32 @@ if (!$paymentSuccess) {
                     \Log::error('Rent request not found', ['rent_request_id' => $rentRequestId]);
                     return ['success' => false, 'message' => 'Rent request not found'];
                 }
+                    $checkIn  = Carbon::parse($rentRequest->check_in);
+    $checkOut = Carbon::parse($rentRequest->check_out);
+    $days     = max(1, $checkIn->diffInDays($checkOut));
+
+    $property = Property::find($rentRequest->property_id);
+    if (!$property) {
+        \Log::error('Property not found', ['property_id' => $rentRequest->property_id]);
+        return ['success' => false, 'message' => 'Property not found'];
+    }
+
+    $pricePerNight = $property->price_per_night ?? $property->price ?? $property->daily_rent ??0;
+    if (!$pricePerNight || $pricePerNight <= 0) {
+        \Log::error('Property pricing not configured', ['property_id' => $property->id]);
+        return ['success' => false, 'message' => 'Property pricing not configured'];
+    }
+
+$rentAmount    = ($pricePerNight ?? 0) * ($days ?? 1);
+$depositAmount = $pricePerNight ?? 0;
+$totalAmount   = bcadd($rentAmount ?? 0, $depositAmount ?? 0, 2);
+
                 $purchase = Purchase::create([
                     'user_id'        => $userId,
                     'property_id'    => $rentRequest->property_id,
                     'rent_request_id'=> $rentRequest->id,
-                    'amount'         => $rentRequest->total_price ?? ($rentRequest->nights * $rentRequest->price_per_night),
-                    'deposit_amount' => $rentRequest->price_per_night ?? 0,
+                    'amount'         => $totalAmount ?? 0,
+                    'deposit_amount' => $depositAmount ?? 0,
                     'payment_type'   => 'rent',
                     'status'         => 'pending',
                     'payment_gateway'=> 'paymob',
