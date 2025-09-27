@@ -10,10 +10,14 @@ use App\Http\Resources\UserResource;
 use App\Http\Resources\Admin\UserDetailResource;
 use App\Http\Resources\Admin\UserStatisticsResource;
 use App\Http\Resources\Admin\AdminActionResource;
+use App\Notifications\CustomMessage;
+use App\Enums\NotificationPurpose;
 use App\Models\User;
+use App\Models\UserNotification;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification; // ADDED THIS LINE
 use Exception;
 
 class UserController extends Controller
@@ -372,9 +376,7 @@ public function updateState($id, $status)
             'status' => 'success',
             'message' => 'User status updated successfully',
             'data' => [
-                'user_id' => $user->id,
-                'new_status' => $user->status,
-                'user_name' => $user->first_name . ' ' . $user->last_name
+                'user' => $user,
             ]
         ]);
 
@@ -442,13 +444,63 @@ public function updateIdState($id, $status)
     } catch (Exception $e) {
         Log::error("Error updating user ID status: " . $e->getMessage(), [
             'user_id' => $id,
-            'id_state' => $id_state,
+            'id_state' => $status, // FIXED: changed $id_state to $status
             'admin_id' => auth('api')->id()
         ]);
 
         return response()->json([
             'status' => 'error',
             'message' => 'Failed to update user ID status: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+public function deleteUser($id)
+{
+    try {
+        // Find the user
+        $user = User::find($id);
+        
+        if (!$user) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'User not found'
+            ], 404);
+        }
+
+        // Store user info for logging before deletion
+        $userInfo = [
+            'user_id' => $user->id,
+            'user_name' => $user->first_name . ' ' . $user->last_name,
+            'email' => $user->email
+        ];
+
+        // Delete the user
+        $user->delete();
+        
+        // Log the action
+        Log::info("User deleted", [
+            'admin_id' => auth('api')->id(),
+            'deleted_user' => $userInfo
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User deleted successfully',
+            'data' => [
+                'deleted_user' => $userInfo
+            ]
+        ]);
+
+    } catch (Exception $e) {
+        Log::error("Error deleting user: " . $e->getMessage(), [
+            'user_id' => $id,
+            'admin_id' => auth('api')->id()
+        ]);
+
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Failed to delete user: ' . $e->getMessage()
         ], 500);
     }
 }
@@ -503,7 +555,7 @@ public function updateRole($id, $status)
     } catch (Exception $e) {
         Log::error("Error updating role : " . $e->getMessage(), [
             'user_id' => $id,
-            'id_state' => $role,
+            'id_state' => $status, // FIXED: changed $role to $status
             'admin_id' => auth('api')->id()
         ]);
 
@@ -514,5 +566,118 @@ public function updateRole($id, $status)
     }
 }
 
+public function verifyAdmin($id)
+{
 
+    try {
+        // Find the user
+        $user = User::find($id);
+        
+        if (!$user) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'User not found'
+            ], 404);
+        }
+
+        // CORRECT WAY: Update using array or direct assignment
+        $user->update([
+            'role' => "admin",
+            "email_verified_at" => now(),
+            "phone_verified_at" =>now(),
+            "id_state" => "valid"
+
+    ]);
+        
+        // OR alternative correct way:
+        // $user->status = $status;
+        // $user->save();
+
+        // Log the action
+        Log::info("User role updated", [
+            'admin_id' => auth('api')->id(),
+            'user_id' => $id,
+            'old_status' => $user->getOriginal('role'),
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Admin Created and Verified successfully',
+            'data' => [
+                'user_id' => $user->id,
+                'new_status' => $user->role,
+                'user_name' => $user->first_name . ' ' . $user->last_name
+            ]
+        ]);
+
+    } catch (Exception $e) {
+        Log::error("Error updating role : " . $e->getMessage(), [
+            'user_id' => $id,
+            'admin_id' => auth('api')->id()
+        ]);
+
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Failed to update user role: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+public function notifyUser(Request $request, int $id)
+{
+    try {
+        $user = User::find($id);
+        
+        if (!$user) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'User not found'
+            ], 404);
+        }
+
+        // Validate that message exists in request
+        $request->validate([
+            'message' => 'required|string'
+        ]);
+$Admin = auth('api')->user();
+$dbnotification = UserNotification::create([
+    'user_id' => $user->id,
+    'sender_id' => $Admin->id, // Admin who sent the notification
+    'entity_id' => $user->id, // The user entity being affected
+    'purpose' => NotificationPurpose::USER_STATUS_UPDATE->value,
+    'title' => "Account Status Updated",
+    'message' => $request->message,
+    'is_read' => false,
+]);
+        
+        // Log the action
+        Log::info("User notified", [
+            'admin_id' => $Admin->id,
+            'user_id' => $id,
+            'message' => $request->message
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Notification sent successfully',
+            'data' => [
+                'user_id' => $user->id,
+                'user_name' => $user->first_name . ' ' . $user->last_name,
+                'UserNotification' => $dbnotification
+            ]
+        ]);
+
+    } catch (Exception $e) {
+        Log::error("Error sending notification: " . $e->getMessage(), [
+            'user_id' => $id,
+            'admin_id' => auth('api')->id(),
+            'message' => $request->message ?? 'No message provided'
+        ]);
+
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Failed to send notification: ' . $e->getMessage()
+        ], 500);
+    }
+}
 }

@@ -8,6 +8,7 @@ enum NotificationPurpose: string
     case USER_VERIFY_REQUEST = 'user_verify_request';
     case USER_VERIFIED = 'user_verified';
     case USER_VERIFICATION_REJECTED = 'user_verification_rejected';
+    case USER_STATUS_UPDATE = 'user_status_update';
 
     // Property verification cases
     case PROPERTY_VERIFY_REQUEST = 'property_verify_request';
@@ -60,6 +61,7 @@ enum NotificationPurpose: string
             self::USER_VERIFY_REQUEST => 'User Verification Request',
             self::USER_VERIFIED => 'User Verified',
             self::USER_VERIFICATION_REJECTED => 'User Verification Rejected',
+            self::USER_STATUS_UPDATE => 'User Status Updated',
             self::PROPERTY_VERIFY_REQUEST => 'Property Verification Request',
             self::PROPERTY_VERIFIED => 'Property Verified',
             self::PROPERTY_VERIFICATION_REJECTED => 'Property Verification Rejected',
@@ -101,6 +103,7 @@ enum NotificationPurpose: string
                 self::USER_VERIFY_REQUEST,
                 self::USER_VERIFIED,
                 self::USER_VERIFICATION_REJECTED,
+                self::USER_STATUS_UPDATE,
             ],
             'property_verification' => [
                 self::PROPERTY_VERIFY_REQUEST,
@@ -155,6 +158,7 @@ enum NotificationPurpose: string
             self::PAYMENT_FAILED,
             self::EMAIL_OTP,
             self::PASSWORD_RESET => true,
+            self::USER_STATUS_UPDATE => false,
             default => false,
         };
     }
@@ -178,6 +182,7 @@ enum NotificationPurpose: string
             self::PROPERTY_VERIFY_REQUEST,
             self::EMAIL_OTP,
             self::PASSWORD_RESET => 'medium',
+            self::USER_STATUS_UPDATE => 'medium',
 
             default => 'low',
         };
