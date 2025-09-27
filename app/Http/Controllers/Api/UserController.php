@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Log;
 
 class UserController extends Controller
 {
-    public function index(int $id)
+    public function index($id)
     {
         return User::with('properties', 'reviews', 'notifications')->find($id);
     }
