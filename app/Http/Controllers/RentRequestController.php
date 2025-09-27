@@ -656,12 +656,36 @@ public function payForRequest(Request $request, $id)
                     'payment_gateway'   => 'wallet',
                 ]);
 
-                // 🔔 Notifications
+// 🔔 Notifications - Database first, then Pusher
                 try {
-                    Notification::send($user, new \App\Notifications\RentPaidBuyer($rentRequest));
-                    Notification::send($property->owner, new \App\Notifications\RentPaidOwner($rentRequest));
+                    $buyerNotification = new \App\Notifications\RentPaidBuyer($rentRequest);
+                    $this->createUserNotificationFromWebsocketData(
+                        $user,
+                        $buyerNotification,
+                        NotificationPurpose::PAYMENT_SUCCESSFUL,
+                        null
+                    );
+                } catch (\Exception $e) {
+                    Log::warning('Failed to create buyer database notification', ['error' => $e->getMessage()]);
+                }
+
+                try {
+                    $ownerNotification = new \App\Notifications\RentPaidOwner($rentRequest);
+                    $this->createUserNotificationFromWebsocketData(
+                        $property->owner,
+                        $ownerNotification,
+                        NotificationPurpose::PAYMENT_SUCCESSFUL,
+                        $user->id
+                    );
+                } catch (\Exception $e) {
+                    Log::warning('Failed to create owner database notification', ['error' => $e->getMessage()]);
+                }
+
+                try {
+                    Notification::send($user, $buyerNotification);
+                    Notification::send($property->owner, $ownerNotification);
                 } catch (\Throwable $e) {
-                    Log::warning('Notification failed on rent payForRequest wallet', ['error' => $e->getMessage()]);
+                    Log::warning('Pusher notification failed on rent payForRequest wallet', ['error' => $e->getMessage()]);
                 }
 
                 return $this->success('Payment successful via wallet.', [
