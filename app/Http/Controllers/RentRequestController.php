@@ -291,7 +291,7 @@ public function createRequest(Request $request)
             // Handle cooldown for cancel after owner confirm
             if ($rentRequest->status === 'confirmed') {
                 $rentRequest->status = 'cancelled';
-                $rentRequest->cooldown_expires_at = Carbon::now()->addHours(48); // business rule
+                $rentRequest->cooldown_expires_at = Carbon::now()->addMinute(); // business rule
             } else {
                 $rentRequest->status = 'cancelled';
             }
@@ -455,7 +455,7 @@ public function createRequest(Request $request)
                 }
 
                 $rentRequest->status = 'rejected';
-                $rentRequest->blocked_until = Carbon::now()->addDays(3);
+                $rentRequest->blocked_until = Carbon::now()->addMinutes(3);
                 $rentRequest->save();
 
                 // Log the action
@@ -642,6 +642,7 @@ public function payForRequest(Request $request, $id)
                 $escrow = EscrowBalance::create([
                     'rent_request_id' => $rentRequest->id,
                     'user_id'         => $user->id,
+                    'owner_id'        => $property->owner_id,
                     'rent_amount'     => $rentAmount,
                     'deposit_amount'  => $depositAmount,
                     'total_amount'    => $totalAmount,

@@ -532,6 +532,7 @@ $totalAmount   = bcadd($rentAmount ?? 0, $depositAmount ?? 0, 2);
                         ['rent_request_id' => $purchase->rent_request_id],
                         [
                             'user_id'       => $purchase->user_id,
+                            'owner_id'      => $rentRequest->property->owner_id,
                             'rent_amount'   => $rentAmount,
                             'deposit_amount'=> $depositAmount,
                             'total_amount'  => $totalAmount,
