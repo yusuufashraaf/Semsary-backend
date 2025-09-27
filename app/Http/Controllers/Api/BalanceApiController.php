@@ -7,6 +7,7 @@ use App\Models\PropertyEscrow;
 use App\Models\Wallet;
 use App\Models\EscrowBalance;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class BalanceApiController extends Controller
 {
@@ -21,43 +22,56 @@ class BalanceApiController extends Controller
             ], 401);
         }
 
-        // Wallet balance
+        // Wallet balance (immediately available)
         $walletBalance = Wallet::where('user_id', $user->id)->value('balance') ?? 0;
 
-        // Locked (escrow still frozen)
-        $locked = PropertyEscrow::where('buyer_id', $user->id)
+        // LOCKED MONEY (can be refunded but still frozen)
+        $locked = 0;
+        
+        // Property escrows - money as buyer that's locked
+        $locked += PropertyEscrow::where('buyer_id', $user->id)
             ->where('status', 'locked')
             ->sum('amount');
 
-        // Refundable (ready to be released/returned)
-        $refundable = 0;
+        // Rent escrows - money as renter that's locked
+        $locked += EscrowBalance::where('user_id', $user->id)
+            ->where('status', 'locked')
+            ->sum('total_amount');
 
-        // Seller released funds
-        $refundable += PropertyEscrow::where('seller_id', $user->id)
+        // CLAIMABLE MONEY (released to me, ready to withdraw)
+        $claimable = 0;
+
+        // Property escrows - money released to me as seller
+        $claimable += PropertyEscrow::where('seller_id', $user->id)
             ->where('status', 'released_to_seller')
             ->sum('amount');
 
-        // Buyer refundable deposits
-        $refundable += PropertyEscrow::where('buyer_id', $user->id)
-            ->where('status', 'ready_for_refund') // adjust status name if needed
+        // Property escrows - money released back to me as buyer (refunds)
+        $claimable += PropertyEscrow::where('buyer_id', $user->id)
+            ->where('status', 'released_to_buyer')
             ->sum('amount');
 
-        // Rent escrow refunds
-        $refundable += EscrowBalance::where('user_id', $user->id)
-            ->where('status', 'released')
+        // Rent escrows - money released to me as owner
+        $claimable += EscrowBalance::where('owner_id', $user->id)
+            ->where('status', 'released_to_owner')
             ->sum('total_amount');
 
-        // Totals
-        $availableNow = $walletBalance + $refundable;
-        $totalInSystem = $walletBalance + $locked + $refundable;
+        // Rent escrows - money released back to me as renter (refunds)
+        $claimable += EscrowBalance::where('user_id', $user->id)
+            ->where('status', 'released_to_renter')
+            ->sum('total_amount');
+
+        // TOTALS
+        $availableNow = $walletBalance + $claimable;
+        $totalInSystem = $walletBalance + $locked + $claimable;
 
         return response()->json([
             "success"       => true,
-            "wallet"        => (float) $walletBalance,  
-            "locked"        => (float) $locked,         
-            "refundable"    => (float) $refundable,    
-            "available_now" => (float) $availableNow,   
-            "total_in_app"  => (float) $totalInSystem,  
+            "wallet"        => (float) $walletBalance,      // Money in wallet
+            "locked"        => (float) $locked,             // Money in escrow (locked)
+            "claimable"     => (float) $claimable,          // Money released to me (ready to claim)
+            "available_now" => (float) $availableNow,       // Wallet + claimable
+            "total_in_app"  => (float) $totalInSystem,      // Everything I have access to
         ]);
     }
 }
