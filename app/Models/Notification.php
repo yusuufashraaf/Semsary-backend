@@ -11,6 +11,10 @@ class Notification extends Model
     use HasFactory;
 
     protected $table = 'notifications';
+    protected $primaryKey = 'id';
+    public $incrementing = false;      // disable auto-increment
+    protected $keyType = 'string';     // treat primary key as string
+
 
     protected $fillable = [
         'id',
@@ -20,7 +24,8 @@ class Notification extends Model
         'purpose',      // enum NotificationPurpose
         'title',
         'message',
-        'is_read',
+        'feedback',
+        'is_read'
     ];
 
     protected $casts = [
