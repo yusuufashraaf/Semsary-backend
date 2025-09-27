@@ -40,7 +40,6 @@ class UserController extends Controller
                 'status' => 'success',
                 'message' => 'Users retrieved successfully',
                 'data' => UserResource::collection($users),
-                'allusers' => UserResource::collection($users),
                 'pagination' => [
                     'current_page' => $users->currentPage(),
                     'last_page' => $users->lastPage(),
@@ -315,6 +314,204 @@ public function changeRole(Request $request, int $id): JsonResponse
         'message' => "User role updated successfully to {$request->role}",
         'data'   => new \App\Http\Resources\UserResource($user),
     ]);
+}
+
+public function updateState($id, $status)
+{
+    // Validate the status parameter
+    $validStatuses = ['active', 'suspended', 'pending'];
+    if (!in_array($status, $validStatuses)) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Invalid status provided. Valid statuses: ' . implode(', ', $validStatuses)
+        ], 400);
+    }
+
+    try {
+        // Find the user
+        $user = User::find($id);
+        
+        if (!$user) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'User not found'
+            ], 404);
+        }
+        $missingdata = false;
+        if (!$user->phone_verified_at) {
+            $missingdata = true;
+        }
+        if (!$user->email_verified_at) {
+            $missingdata = true;
+        }
+        if ($user->id_state != "valid") {
+            $missingdata = true;
+        }
+
+        // CORRECT WAY: Update using array or direct assignment
+        if($missingdata && $status == "active"){
+            $user->update(['status' => 'pending']);    
+        }
+        else{
+            $user->update(['status' => $status]);    
+        }
+        
+        // OR alternative correct way:
+        // $user->status = $status;
+        // $user->save();
+
+        // Log the action
+        Log::info("User status updated", [
+            'admin_id' => auth('api')->id(),
+            'user_id' => $id,
+            'old_status' => $user->getOriginal('status'),
+            'new_status' => $status
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User status updated successfully',
+            'data' => [
+                'user_id' => $user->id,
+                'new_status' => $user->status,
+                'user_name' => $user->first_name . ' ' . $user->last_name
+            ]
+        ]);
+
+    } catch (Exception $e) {
+        Log::error("Error updating user status: " . $e->getMessage(), [
+            'user_id' => $id,
+            'status' => $status,
+            'admin_id' => auth('api')->id()
+        ]);
+
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Failed to update user status: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+public function updateIdState($id, $status)
+{
+    // Validate the status parameter
+    $validStatuses = ['valid', 'rejected', 'pending'];
+    if (!in_array($status, $validStatuses)) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Invalid status provided. Valid statuses: ' . implode(', ', $validStatuses)
+        ], 400);
+    }
+
+    try {
+        // Find the user
+        $user = User::find($id);
+        
+        if (!$user) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'User not found'
+            ], 404);
+        }
+
+        // CORRECT WAY: Update using array or direct assignment
+        $user->update(['id_state' => $status]);
+        
+        // OR alternative correct way:
+        // $user->status = $status;
+        // $user->save();
+
+        // Log the action
+        Log::info("User id status updated", [
+            'admin_id' => auth('api')->id(),
+            'user_id' => $id,
+            'old_status' => $user->getOriginal('id_state'),
+            'new_status' => $status
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User status updated successfully',
+            'data' => [
+                'user_id' => $user->id,
+                'new_status' => $user->id_state,
+                'user_name' => $user->first_name . ' ' . $user->last_name
+            ]
+        ]);
+
+    } catch (Exception $e) {
+        Log::error("Error updating user ID status: " . $e->getMessage(), [
+            'user_id' => $id,
+            'id_state' => $id_state,
+            'admin_id' => auth('api')->id()
+        ]);
+
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Failed to update user ID status: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+public function updateRole($id, $status)
+{
+    // Validate the status parameter
+    $validStatuses = ['admin', 'agent', 'user'];
+    if (!in_array($status, $validStatuses)) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Invalid status provided. Valid statuses: ' . implode(', ', $validStatuses)
+        ], 400);
+    }
+
+    try {
+        // Find the user
+        $user = User::find($id);
+        
+        if (!$user) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'User not found'
+            ], 404);
+        }
+
+        // CORRECT WAY: Update using array or direct assignment
+        $user->update(['role' => $status]);
+        
+        // OR alternative correct way:
+        // $user->status = $status;
+        // $user->save();
+
+        // Log the action
+        Log::info("User role updated", [
+            'admin_id' => auth('api')->id(),
+            'user_id' => $id,
+            'old_status' => $user->getOriginal('role'),
+            'new_status' => $status
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User role updated successfully',
+            'data' => [
+                'user_id' => $user->id,
+                'new_status' => $user->role,
+                'user_name' => $user->first_name . ' ' . $user->last_name
+            ]
+        ]);
+
+    } catch (Exception $e) {
+        Log::error("Error updating role : " . $e->getMessage(), [
+            'user_id' => $id,
+            'id_state' => $role,
+            'admin_id' => auth('api')->id()
+        ]);
+
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Failed to update user role: ' . $e->getMessage()
+        ], 500);
+    }
 }
 
 

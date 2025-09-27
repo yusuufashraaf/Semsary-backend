@@ -10,6 +10,11 @@ class Purchase extends Model
 {
     use HasFactory;
 
+        protected $table = 'purchases';                 
+        protected $primaryKey = 'purchase_id';          
+        public $incrementing = true;                    
+        protected $keyType = 'int';
+
     protected $fillable = [
         'user_id',
         'property_id',
@@ -61,7 +66,7 @@ class Purchase extends Model
     // Scopes
     public function scopeSuccessful($query)
     {
-        return $query->where('status', 'successful');
+        return $query->where('status', 'success');
     }
 
     public function scopeRefunds($query)

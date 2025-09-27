@@ -12,6 +12,7 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
+
         // Auto-cancel unpaid rent requests every 5 minutes
         $schedule->command('rent-requests:auto-cancel')
             ->everyFiveMinutes()
@@ -47,8 +48,12 @@ class Kernel extends ConsoleKernel
             ->everyFifteenMinutes()
             ->withoutOverlapping();
 
-                // Release property escrows automatically
-$schedule->command('escrow:release')->everyMinute()->withoutOverlapping()->runInBackground();
+                                    // Release property escrows automatically
+
+    $schedule->command('escrow:release')
+        ->everyMinute()
+        ->withoutOverlapping()
+        ->runInBackground();
 
     }
 

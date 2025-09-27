@@ -153,14 +153,17 @@ Route::get('/features', [FeatureController::class, 'index']);
 Route::middleware(['auth:api'])->group(function () {
     //properties
     Route::apiResource('/properties', PropertyController::class);
-    //owner dashboard
+    //Route::get('/properties', PropertyController::class);
+        //owner dashboard
     Route::get('/owner/dashboard', [OwnerDashboardController::class, 'index']);
 });
 
 
-
+Route::put('/admin/users/{id}/status/{status}', [App\Http\Controllers\Admin\UserController::class, 'updateState'])->middleware(['auth:api']);
+Route::put('/admin/users/{id}/id_state/{status}', [App\Http\Controllers\Admin\UserController::class, 'updateIdState'])->middleware(['auth:api']);
+Route::put('/admin/users/{id}/role/{status}', [App\Http\Controllers\Admin\UserController::class, 'updateRole'])->middleware(['auth:api']);
 // Admin routes
-Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
+Route::prefix('admin')->middleware(['auth:api'])->group(function () {
     // Existing admin dashboard routes - SEM-60: Admin Dashboard API Implementation
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
     Route::get('/dashboard/charts/revenue', [DashboardController::class, 'getRevenueChart']);
@@ -168,7 +171,7 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
     Route::get('/dashboard/charts/properties', [DashboardController::class, 'getPropertiesChart']);
 
     // SEM-61: Simple Admin Users Management Routes
-    Route::prefix('users')->group(function () {
+    Route::prefix('/users')->group(function () {
         // Search and statistics (must come before parameterized routes)
         Route::get('/search', [App\Http\Controllers\Admin\UserController::class, 'search']);
         Route::get('/statistics', [App\Http\Controllers\Admin\UserController::class, 'statistics']);
@@ -176,15 +179,17 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
 
         // View users
         Route::get('/', [App\Http\Controllers\Admin\UserController::class, 'index']);
-        Route::get('/{id}', [App\Http\Controllers\Admin\UserController::class, 'show']);
+
 
         // User status management
+        Route::put('/{id}/status/{status}', [App\Http\Controllers\Admin\UserController::class, 'updateState']);
         Route::post('/{id}/activate', [App\Http\Controllers\Admin\UserController::class, 'activate']);
         Route::post('/{id}/suspend', [App\Http\Controllers\Admin\UserController::class, 'suspend']);
         Route::post('/{id}/block', [App\Http\Controllers\Admin\UserController::class, 'block']);
 
         // User activity
         Route::get('/{id}/activity', [App\Http\Controllers\Admin\UserController::class, 'getUserActivity']);
+        Route::get('/{id}', [App\Http\Controllers\Admin\UserController::class, 'show']);
     });
 
     // SEM-62: Admin Properties Management Routes
@@ -244,6 +249,10 @@ Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
     });
 });
 
+Route::middleware(['auth:api', 'role:admin,agent'])->group(function () {
+    Route::get('/admin/users/{id}', [App\Http\Controllers\Admin\UserController::class, 'show']);
+});
+
 // SEM-65 CS Agent routes (for agents to manage their own assignments)
 Route::prefix('cs-agent')->middleware(['auth:api', 'role:agent'])->group(function () {
     // Get assigned properties (task queue)
@@ -260,6 +269,8 @@ Route::prefix('cs-agent')->middleware(['auth:api', 'role:agent'])->group(functio
 
     // Update verification status
     Route::patch('/properties/{property}/status', [PropertyVerificationController::class, 'update']);
+
+    Route::patch('/properties/{property}/state', [CsAgentPropertyController::class, 'updateState']);
 
     // Upload verification documents
     Route::post('/properties/{property}/documents', [PropertyDocumentController::class, 'store']);

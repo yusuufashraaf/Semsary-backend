@@ -3,13 +3,16 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use App\Models\PropertyEscrow;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use App\Notifications\EscrowReleasedBuyer;
+use App\Notifications\EscrowReleasedSeller;
 
-class ReleaseEscrow extends Command
+class ReleaseEscrowCommand extends Command
 {
     protected $signature = 'escrow:release';
     protected $description = 'Release expired property escrows to sellers';
@@ -35,11 +38,17 @@ class ReleaseEscrow extends Command
                 try {
                     $seller = $escrow->seller;
 
+                    if (!$seller) {
+                        Log::error("Seller missing for escrow ID {$escrow->id}");
+                        return;
+                    }
+
                     // Lock seller wallet
                     $wallet = Wallet::lockForUpdate()->firstOrCreate(
                         ['user_id' => $seller->id],
                         ['balance' => 0]
                     );
+
                     $before = $wallet->balance;
                     $wallet->increment('balance', $escrow->amount);
 
@@ -47,7 +56,7 @@ class ReleaseEscrow extends Command
                         'wallet_id'      => $wallet->id,
                         'amount'         => $escrow->amount,
                         'type'           => 'sale_income',
-                        'ref_id'         => $escrow->propertyPurchase->id,
+                        'ref_id'         => $escrow->propertyPurchase?->id,
                         'ref_type'       => 'property_purchase',
                         'description'    => 'Escrow released to seller',
                         'balance_before' => $before,
@@ -61,13 +70,21 @@ class ReleaseEscrow extends Command
                         'release_reason' => 'buyer_did_not_cancel',
                     ]);
 
-                    $escrow->propertyPurchase->update(['status' => 'completed']);
+                    $escrow->propertyPurchase?->update(['status' => 'completed']);
 
                     // Mark property as sold
-                    $escrow->property->update([
+                    $escrow->property?->update([
                         'property_state'   => 'Sold',
                         'pending_buyer_id' => null,
                     ]);
+
+                    // Notifications
+                    try {
+                        Notification::send($escrow->buyer, new EscrowReleasedBuyer($escrow));
+                        Notification::send($escrow->seller, new EscrowReleasedSeller($escrow));
+                    } catch (\Exception $e) {
+                        Log::warning('Escrow notification failed', ['error' => $e->getMessage()]);
+                    }
 
                     $this->info("Released escrow #{$escrow->id} to seller #{$seller->id}");
                 } catch (\Throwable $e) {
