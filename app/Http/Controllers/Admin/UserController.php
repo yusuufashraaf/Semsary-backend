@@ -566,6 +566,63 @@ public function updateRole($id, $status)
     }
 }
 
+public function verifyAdmin($id)
+{
+
+    try {
+        // Find the user
+        $user = User::find($id);
+        
+        if (!$user) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'User not found'
+            ], 404);
+        }
+
+        // CORRECT WAY: Update using array or direct assignment
+        $user->update([
+            'role' => "admin",
+            "email_verified_at" => now(),
+            "phone_verified_at" =>now(),
+            "id_state" => "valid"
+
+    ]);
+        
+        // OR alternative correct way:
+        // $user->status = $status;
+        // $user->save();
+
+        // Log the action
+        Log::info("User role updated", [
+            'admin_id' => auth('api')->id(),
+            'user_id' => $id,
+            'old_status' => $user->getOriginal('role'),
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Admin Created and Verified successfully',
+            'data' => [
+                'user_id' => $user->id,
+                'new_status' => $user->role,
+                'user_name' => $user->first_name . ' ' . $user->last_name
+            ]
+        ]);
+
+    } catch (Exception $e) {
+        Log::error("Error updating role : " . $e->getMessage(), [
+            'user_id' => $id,
+            'admin_id' => auth('api')->id()
+        ]);
+
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Failed to update user role: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
 public function notifyUser(Request $request, int $id)
 {
     try {
@@ -595,7 +652,7 @@ $dbnotification = UserNotification::create([
         
         // Log the action
         Log::info("User notified", [
-            'admin_id' => auth('api')->id(),
+            'admin_id' => $Admin->id,
             'user_id' => $id,
             'message' => $request->message
         ]);
@@ -605,7 +662,8 @@ $dbnotification = UserNotification::create([
             'message' => 'Notification sent successfully',
             'data' => [
                 'user_id' => $user->id,
-                'user_name' => $user->first_name . ' ' . $user->last_name
+                'user_name' => $user->first_name . ' ' . $user->last_name,
+                'UserNotification' => $dbnotification
             ]
         ]);
 
