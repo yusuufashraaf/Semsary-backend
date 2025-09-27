@@ -66,7 +66,7 @@ class PropertyPurchaseController extends Controller
                 'user_id'   => $recipient->id,
                 'sender_id' => $senderId,
                 'entity_id' => $entityId,
-                'purpose'   => $purpose,
+                'purpose'   => $purpose->value,
                 'title'     => $purpose->label(),
                 'message'   => $message,
                 'is_read'   => false,
