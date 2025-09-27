@@ -679,4 +679,5 @@ $dbnotification = UserNotification::create([
             'message' => $request->message ?? 'No message provided'
         ]);
 }
+}}
 
