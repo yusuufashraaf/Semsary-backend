@@ -38,6 +38,31 @@ class Property extends Model
         'price' => 'decimal:2',
     ];
 
+
+
+    public function setPriceTypeAttribute($value)
+{
+    $value = strtolower($value);
+    $this->attributes['price_type'] = $value;
+
+    if ($value === 'fullpay') {
+        $this->attributes['status'] = 'sale';
+    } elseif ($value === 'daily') {
+        $this->attributes['status'] = 'rent';
+    }
+}
+
+public function setStatusAttribute($value)
+{
+    $value = strtolower($value);
+    $this->attributes['status'] = $value;
+
+    if ($value === 'sale') {
+        $this->attributes['price_type'] = 'Fullpay';
+    } elseif ($value === 'rent') {
+        $this->attributes['price_type'] = 'Daily';
+    }
+}
     /* ---------------- Relationships ---------------- */
 
     // Owner of the property
