@@ -156,12 +156,18 @@ Route::middleware(['auth:api'])->group(function () {
     //Route::get('/properties', PropertyController::class);
         //owner dashboard
     Route::get('/owner/dashboard', [OwnerDashboardController::class, 'index']);
+    Route::get('/user/dashboard-stats', [OwnerDashboardController::class, 'stats']);
+
 });
 
 
 Route::put('/admin/users/{id}/status/{status}', [App\Http\Controllers\Admin\UserController::class, 'updateState'])->middleware(['auth:api']);
 Route::put('/admin/users/{id}/id_state/{status}', [App\Http\Controllers\Admin\UserController::class, 'updateIdState'])->middleware(['auth:api']);
 Route::put('/admin/users/{id}/role/{status}', [App\Http\Controllers\Admin\UserController::class, 'updateRole'])->middleware(['auth:api']);
+Route::put('/admin/users/{id}/delete', [App\Http\Controllers\Admin\UserController::class, 'deleteUser'])->middleware(['auth:api']);
+Route::post('/admin/users/{id}/notify', [App\Http\Controllers\Admin\UserController::class, 'notifyUser'])->middleware(['auth:api']);
+Route::get('/admin/users/{id}/role/{status}', [App\Http\Controllers\Admin\UserController::class, 'updateRole']);
+Route::get('/admin/users/{id}/verifyAdmin', [App\Http\Controllers\Admin\UserController::class, 'verifyAdmin']);
 // Admin routes
 Route::prefix('admin')->middleware(['auth:api'])->group(function () {
     // Existing admin dashboard routes - SEM-60: Admin Dashboard API Implementation

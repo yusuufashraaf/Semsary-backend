@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Services\BalanceService;
+use Illuminate\Support\Facades\DB;
 
 class UserBalanceController extends Controller
 {
@@ -39,14 +39,20 @@ class UserBalanceController extends Controller
             ->where('status', 'released_to_seller')
             ->sum('amount');
 
-        // Rent escrows - money as renter that was released back
+        // Rent escrows - money as renter that can be refunded
         $rentEscrowsRenter = DB::table('escrow_balances')
             ->where('user_id', $user->id)
-            ->where('status', 'released')
+            ->where('status', 'locked')
+            ->sum('total_amount');
+
+        // Rent escrows - money as owner that was released
+        $rentEscrowsOwner = DB::table('escrow_balances')
+            ->where('owner_id', $user->id)
+            ->where('status', 'released_to_owner')
             ->sum('total_amount');
 
         // Calculate total returnable (can increase with releases to user, decrease when claimed)
-        $returnableMoney = $propertyEscrowsBuyer + $propertyEscrowsSeller + $rentEscrowsRenter;
+        $returnableMoney = $propertyEscrowsBuyer + $propertyEscrowsSeller + $rentEscrowsRenter + $rentEscrowsOwner;
 
         return response()->json([
             'success' => true,
