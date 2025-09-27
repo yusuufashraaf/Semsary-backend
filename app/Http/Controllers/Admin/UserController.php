@@ -15,6 +15,7 @@ use App\Enums\NotificationPurpose;
 use App\Events\UserUpdated;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Notifications\IdStatusUpdated;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -423,10 +424,12 @@ public function updateIdState($id, $status)
         // CORRECT WAY: Update using array or direct assignment
         $user->update(['id_state' => $status]);
 
+
         broadcast(new UserUpdated($user));
         // OR alternative correct way:
         // $user->status = $status;
         // $user->save();
+        $user->notify(new IdStatusUpdated($status));
 
         // Log the action
         Log::info("User id status updated", [
