@@ -1,5 +1,7 @@
 <?php
 
+namespace App\Notifications;
+
 use App\Models\Property;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
