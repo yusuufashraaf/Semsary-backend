@@ -156,6 +156,8 @@ Route::middleware(['auth:api'])->group(function () {
     //Route::get('/properties', PropertyController::class);
         //owner dashboard
     Route::get('/owner/dashboard', [OwnerDashboardController::class, 'index']);
+    Route::get('/user/dashboard-stats', [OwnerDashboardController::class, 'stats']);
+
 });
 
 
