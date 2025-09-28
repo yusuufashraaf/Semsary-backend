@@ -267,12 +267,6 @@ class PropertyController extends Controller
             }
         }
 
-        if ($data['price_type'] === 'FullPay') {
-        $data['status'] = 'sale';
-        } elseif ($data['price_type'] === 'Daily') {
-            $data['status'] = 'rent';
-        }
-
         $user = auth('api')->user();
 
         if ($property->owner_id !== $user->id) {
