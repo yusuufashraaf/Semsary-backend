@@ -33,19 +33,42 @@ class GoogleAuthController extends Controller
         $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
 
         try {
-            $googleUser = Socialite::driver('google')->stateless()->user();
+            // $googleUser = Socialite::driver('google')->stateless()->user();
 
-            // Find or create the user
-            $user = User::updateOrCreate(
-                ['email' => $googleUser->email],
-                [
-                    'google_id' => $googleUser->id,
-                    'first_name' => $googleUser->user['given_name'] ?? 'User',
-                    'last_name' => $googleUser->user['family_name'] ?? '',
-                    'email_verified_at' => now(),
-                    'password' => bcrypt(Str::random(24)) // Only set if new user
-                ]
-            );
+            // // Find or create the user
+            // $user = User::updateOrCreate(
+            //     ['email' => $googleUser->email],
+            //     [
+            //         'google_id' => $googleUser->id,
+            //         'first_name' => $googleUser->user['given_name'] ?? 'User',
+            //         'last_name' => $googleUser->user['family_name'] ?? '',
+            //         'email_verified_at' => now(),
+            //         'password' => bcrypt(Str::random(24)) // Only set if new user
+            //     ]
+            // );
+            $googleUser = Socialite::driver('google')->stateless()->user();
+        
+        $user = User::where('email', $googleUser->email)->first();
+
+        if ($user) {
+            // Update existing user - preserve existing data
+            $user->update([
+                'google_id' => $googleUser->id,
+                'auth_method' => 'google',
+                'email_verified_at' => $user->email_verified_at ?? now(),
+            ]);
+        } else {
+            // Create new Google user
+            $user = User::create([
+                'email' => $googleUser->email,
+                'google_id' => $googleUser->id,
+                'first_name' => $googleUser->user['given_name'] ?? 'User',
+                'last_name' => $googleUser->user['family_name'] ?? '',
+                'email_verified_at' => now(),
+                'auth_method' => 'google',
+                'password' => bcrypt(Str::random(24))
+            ]);
+        }
 
             // Generate tokens
             $accessToken = auth('api')->login($user);

@@ -686,5 +686,4 @@ $dbnotification = UserNotification::create([
     }
     }
 }
-}}
 
