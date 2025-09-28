@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Log;
 
 class UserController extends Controller
 {
-    public function index(int $id)
+    public function index($id)
     {
         return User::with('properties', 'reviews', 'notifications')->find($id);
     }
@@ -45,12 +45,13 @@ public function notifications(int $id)
 {
     $notifications = Notification::where('notifiable_id', $id)
         ->where('notifiable_type', User::class)
+        ->whereNull('read_at') // 👈 only unread
         ->orderBy('created_at', 'desc')
         ->get()
         ->map(function($n) {
             $data = json_decode($n->data, true) ?? [];
             return [
-                'id' => (string)$n->id, // ✅ cast to string to be explicit
+                'id' => (string)$n->id,
                 'user_id' => $n->notifiable_id,
                 'title' => $data['title'] ?? 'Notification',
                 'message' => $data['message'] ?? '',
