@@ -4,7 +4,7 @@ namespace App\Console;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
-
+use App\Services\PaymobPaymentService;
 class Kernel extends ConsoleKernel
 {
     /**
@@ -27,26 +27,26 @@ class Kernel extends ConsoleKernel
                 // Notification::send(User::admins()->get(), new AutoCancelJobFailed());
             });
 
-        // Optional: Daily cleanup of old cancelled/rejected requests
-        $schedule->command('rent-requests:cleanup-old')
-            ->dailyAt('02:00') // Run at 2 AM
-            ->withoutOverlapping()
-            ->runInBackground();
+        // // Optional: Daily cleanup of old cancelled/rejected requests
+        // $schedule->command('rent-requests:cleanup-old')
+        //     ->dailyAt('02:00') // Run at 2 AM
+        //     ->withoutOverlapping()
+        //     ->runInBackground();
 
-        // Optional: Weekly report of rent request statistics
-        $schedule->command('rent-requests:weekly-report')
-            ->weeklyOn(1, '09:00') // Monday at 9 AM
-            ->runInBackground();
+        // // Optional: Weekly report of rent request statistics
+        // $schedule->command('rent-requests:weekly-report')
+        //     ->weeklyOn(1, '09:00') // Monday at 9 AM
+        //     ->runInBackground();
 
         // Optional: Daily notification digest for owners with pending requests
-        $schedule->command('rent-requests:daily-digest')
-            ->dailyAt('09:00') // 9 AM
-            ->runInBackground();
+        // $schedule->command('rent-requests:daily-digest')
+        //     ->dailyAt('09:00') // 9 AM
+        //     ->runInBackground();
 
         // System health check
-        $schedule->command('system:health-check')
-            ->everyFifteenMinutes()
-            ->withoutOverlapping();
+        // $schedule->command('system:health-check')
+        //     ->everyFifteenMinutes()
+        //     ->withoutOverlapping();
 
                                     // Release property escrows automatically
 
@@ -54,6 +54,10 @@ class Kernel extends ConsoleKernel
         ->everyMinute()
         ->withoutOverlapping()
         ->runInBackground();
+        
+$schedule->call(function () {
+    app(PaymobPaymentService::class)->cleanupOldPendingPurchases();
+})->daily(); // Run once daily
 
     }
 
