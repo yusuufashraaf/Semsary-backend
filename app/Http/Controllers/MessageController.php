@@ -18,16 +18,26 @@ class MessageController extends Controller
     public function getUserChats()
     {
         $user = auth('api')->user();
-        
-        $chats = Chat::with(['latestMessage', 'property', 'owner', 'renter'])
+        if($user->role == "user"){
+            $chats = Chat::with(['latestMessage', 'property', 'owner', 'renter'])
             ->where('owner_id', $user->id)
-            ->orWhere('renter_id', $user->id)
             ->get();
 
         return response()->json([
             'chats' => $chats,
             'total_unread' => $chats->sum('unread_count')
         ]);
+        }
+        else{
+            $chats = Chat::with(['latestMessage', 'property', 'owner', 'renter'])
+            ->Where('renter_id', $user->id)
+            ->get();
+
+        return response()->json([
+            'chats' => $chats,
+            'total_unread' => $chats->sum('unread_count')
+        ]);
+        }
     }
 
     public function getChatMessages(Chat $chat)
