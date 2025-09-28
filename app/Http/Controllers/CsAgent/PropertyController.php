@@ -48,7 +48,7 @@ class PropertyController extends Controller
 
         // Query all properties
         $query = Property::with([
-            'owner:id,first_name,last_name,email,phone_number',
+            'owner:id,first_name,last_name,email,phone_number,status',
             'images:id,property_id,image_url,order_index'
         ]);
 
