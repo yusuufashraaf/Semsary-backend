@@ -38,23 +38,24 @@ class ImageOfId extends Controller
             $cloudinaryService->deleteFile($user->id_image_public_id);
         }
 
-        $uploadResult = $cloudinaryService->uploadFile($file, $folder);
+            $uploadResult = $cloudinaryService->uploadFile($file, $folder);
 
-        if (!$uploadResult['success']) {
+            if (!$uploadResult['success']) {
+                return response()->json([
+                    'message' => 'Failed to upload image.',
+                    'error' => $uploadResult['error']
+                ], 500);
+            }
+
+            // Update user: new ID image + state pending
+            $user->update([
+                'id_image_url' => $uploadResult['url'],
+                'id_state'     => 'pending',
+            ]);
+
             return response()->json([
-                'message' => 'Failed to upload image.',
-                'error' => $uploadResult['error']
-            ], 500);
+                'message' => 'ID image uploaded successfully.',
+                'url' => $uploadResult['url']
+            ]);
         }
-
-        // ✅ Update with new image (URL + public_id)
-        $user->update([
-            'id_image_url' => $uploadResult['url'],
-        ]);
-
-        return response()->json([
-            'message' => 'ID image uploaded successfully.',
-            'url' => $uploadResult['url']
-        ]);
-    }
 }
