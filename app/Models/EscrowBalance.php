@@ -13,6 +13,7 @@ class EscrowBalance extends Model
     protected $fillable = [
         'rent_request_id',
         'user_id',
+        'owner_id',
         'rent_amount',
         'deposit_amount',
         'total_amount',
