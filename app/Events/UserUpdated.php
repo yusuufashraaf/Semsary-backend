@@ -44,7 +44,8 @@ class UserUpdated implements ShouldBroadcast
             "isPhoneVerified" => (bool) $this->user->phone_verified_at,
             "role"          => $this->user->role,
             "status"        => $this->user->status,
-            "idUpladed"     => $this->user->id_document_path,
+            "idUpladed"       => $this->user->id_image_url,
+            'id_state'        => $this->user->id_state,
         ];
     }
 }
