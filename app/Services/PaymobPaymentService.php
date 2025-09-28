@@ -714,24 +714,33 @@ $totalAmount   = bcadd($rentAmount ?? 0, $depositAmount ?? 0, 2);
     'metadata'       => array_merge($purchase->metadata ?? [], ['paymob_txn' => $obj]),
 ]);
 
-
-                    $rentRequest   = RentRequest::lockForUpdate()->find($purchase->rent_request_id);
+                   $rentRequest = RentRequest::lockForUpdate()->with('property')->find($purchase->rent_request_id);
                     $rentAmount    = $purchase->amount - ($purchase->deposit_amount ?? 0);
                     $depositAmount = $purchase->deposit_amount ?? ($rentRequest->price_per_night ?? 0);
                     $totalAmount   = $purchase->amount;
 
-                    $escrow = EscrowBalance::firstOrCreate(
-                        ['rent_request_id' => $purchase->rent_request_id],
-                        [
-                            'user_id'       => $purchase->user_id,
-                            'owner_id'      => $rentRequest->property->owner_id,
-                            'rent_amount'   => $rentAmount,
-                            'deposit_amount'=> $depositAmount,
-                            'total_amount'  => $totalAmount,
-                            'status'        => 'locked',
-                            'locked_at'     => now(),
-                        ]
-                    );
+
+// Then verify the property exists
+if (!$rentRequest || !$rentRequest->property) {
+    \Log::error('RentRequest or Property not found', [
+        'rent_request_id' => $purchase->rent_request_id,
+        'has_property' => $rentRequest ? ($rentRequest->property ? 'yes' : 'no') : 'no_rent_request'
+    ]);
+    throw new \Exception('RentRequest or Property not found');
+}
+
+$escrow = EscrowBalance::firstOrCreate(
+    ['rent_request_id' => $purchase->rent_request_id],
+    [
+        'user_id'       => $purchase->user_id,
+        'owner_id'      => $rentRequest->property->owner_id,
+        'rent_amount'   => $rentAmount,
+        'deposit_amount'=> $depositAmount,
+        'total_amount'  => $totalAmount,
+        'status'        => 'locked',
+        'locked_at'     => now(),
+    ]
+);
 
                     if ($rentRequest && $rentRequest->status !== 'paid') {
                         $rentRequest->update(['status' => 'paid']);
