@@ -35,9 +35,32 @@ class PropertyListController extends Controller
             $query->whereRaw('LOWER(type) = ?', [strtolower($type)]);
         }
 
-        if ($request->filled('status')) {
-            $query->where('property_state', $request->status);
-        }
+        // Status filter - Updated to handle multiple statuses
+      // Always filter by allowed statuses first
+$query->whereIn('property_state', ['Valid', 'Invalid']);
+
+// Then apply user's specific status filter if provided AND valid
+if ($request->filled('status')) {
+    $status = $request->status;
+    
+    // Convert to array if needed
+    if (is_string($status) && strpos($status, ',') !== false) {
+        $statuses = array_map('trim', explode(',', $status));
+    } else if (is_array($status)) {
+        $statuses = $status;
+    } else {
+        $statuses = [$status];
+    }
+    
+    // Only apply user filter if it contains valid statuses
+    $allowedStatuses = ['Valid', 'Invalid'];
+    $validStatuses = array_intersect($statuses, $allowedStatuses);
+    
+    // Override base filter only if user selected valid statuses
+    if (!empty($validStatuses)) {
+        $query->whereIn('property_state', $validStatuses);
+    }
+}
 
         if ($request->filled('beds')) {
             $beds = explode(',', $request->beds);
@@ -48,15 +71,16 @@ class PropertyListController extends Controller
         if ($request->filled('priceMin')) {
             $query->where('price', '>=', $request->priceMin);
         }
+        
         // Price Type filter
         if ($request->filled('price_type')) {
             $query->where('price_type', $request->price_type);
         }
 
-
         if ($request->filled('priceMax')) {
             $query->where('price', '<=', $request->priceMax);
         }
+        
         if ($request->filled('amenities')) {
             $amenities = is_array($request->amenities)
                 ? $request->amenities
@@ -96,8 +120,7 @@ class PropertyListController extends Controller
                 'sqft' => $property->size,
                 'price' => (float) $property->price,
                 'status' => strtolower($property->property_state),
-                                'price_type' => $property->price_type
-
+                'price_type' => $property->price_type
             ];
         });
 
