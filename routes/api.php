@@ -33,7 +33,7 @@ use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\CsAgent\PropertyController as CsAgentPropertyController;
 use App\Http\Controllers\CsAgent\PropertyVerificationController;
 use App\Http\Controllers\CsAgent\PropertyDocumentController;
-use App\Http\Controllers\MessageController;
+//use App\Http\Controllers\MessageController;
 
 use App\Http\Controllers\Api\CheckoutController;
 use App\Http\Controllers\UserNotificationController;
@@ -63,6 +63,7 @@ Route::get('/user', function (Request $request) {
 Route::post('/send-message',[NewMessageController::class,'sendMessage']);
 Route::post('/broadcasting/auth',[NewMessageController::class,'authenticateBroadcast']);
 Route::get('/fetch-messages/{chatId}',[NewMessageController::class,'fetchMessages']);
+Route::get('/delete/{chatId}',[NewMessageController::class,'deleteChat']);
 Route::get('/fetch-chats/{userId}',[NewMessageController::class,'fetchChats']);
 Route::get('/fetch-available-chats/{userId}',[NewMessageController::class,'fetchAvailableChats']);
 
@@ -312,21 +313,21 @@ Route::prefix('cs-agent')->middleware(['auth:api', 'role:agent'])->group(functio
 });
 
 
-Route::middleware('auth:api')->prefix('user')->group(function () {
+// Route::middleware('auth:api')->prefix('user')->group(function () {
 
-    Route::get('/chats', [MessageController::class, 'getUserChats']);
+//     Route::get('/chats', [MessageController::class, 'getUserChats']);
 
-    Route::get('/chats/{chat}/messages', [MessageController::class, 'getChatMessages']);
+//     Route::get('/chats/{chat}/messages', [MessageController::class, 'getChatMessages']);
 
-    Route::post('/chats/{chat}/messages', [MessageController::class, 'sendMessage']);
+//     Route::post('/chats/{chat}/messages', [MessageController::class, 'sendMessage']);
 
-    Route::post('/chats/start', [MessageController::class, 'startChat']);
+//     Route::post('/chats/start', [MessageController::class, 'startChat']);
 
-    Route::post('/chats/{chat}/read', [MessageController::class, 'markAsRead']);
+//     Route::post('/chats/{chat}/read', [MessageController::class, 'markAsRead']);
 
-    // ADD THIS ROUTE for broadcasting authentication
-    Route::post('/broadcasting/auth', [MessageController::class, 'authenticateBroadcast']);
-});
+//     // ADD THIS ROUTE for broadcasting authentication
+//     Route::post('/broadcasting/auth', [MessageController::class, 'authenticateBroadcast']);
+// });
 
 Route::middleware('auth:api')->get('user/reviewable-properties', [ReviewController::class, 'getReviewableProperties']);
 

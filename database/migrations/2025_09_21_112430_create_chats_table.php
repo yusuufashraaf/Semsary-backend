@@ -16,7 +16,10 @@ return new class extends Migration
             $table->timestamp('last_message_at')->nullable();
             $table->timestamps();
             
-            $table->unique(['property_id', 'owner_id', 'renter_id']);
+            // UNIQUE: One chat per property-owner combination
+            // This allows multiple renters for the same property with same owner
+            // and same renter to have multiple properties with same owner
+            $table->unique(['property_id', 'owner_id']);
         });
     }
 

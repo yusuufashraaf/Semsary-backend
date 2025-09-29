@@ -55,40 +55,71 @@ class NewMessageController extends Controller
 
     public function fetchAvailableChats($userId)
     {
-// Get completed/paid rent requests
-$rentRequests = RentRequest::where('user_id', $userId)
-    ->whereIn('status', ['completed', 'paid'])
-    ->get();
+        // Get completed/paid rent requests
+        $rentRequests = RentRequest::where('user_id', $userId)
+            ->whereIn('status', ['completed', 'paid'])
+            ->get();
 
-// Create missing chats
-foreach ($rentRequests as $rentRequest) {
-    $existingChat = Chat::where('property_id', $rentRequest->property_id)
-        ->where(function($query) use ($userId) {
-            $query->where('owner_id', $userId)
-                  ->orWhere('renter_id', $userId);
-        })
-        ->first();
-    
-    if (!$existingChat) {
-        Chat::create([
-            'property_id' => $rentRequest->property_id,
-            'owner_id' => $rentRequest->property->owner_id, // assuming relation
-            'renter_id' => $userId,
-            'created_at' => now(),
-            'updated_at' => now(),
+        // Create missing chats
+        foreach ($rentRequests as $rentRequest) {
+            $existingChat = Chat::where('property_id', $rentRequest->property_id)
+                ->where(function($query) use ($userId) {
+                    $query->where('owner_id', $userId)
+                        ->orWhere('renter_id', $userId);
+                })
+                ->first();
+            
+            if (!$existingChat) {
+                Chat::create([
+                    'property_id' => $rentRequest->property_id,
+                    'owner_id' => $rentRequest->property->owner_id, // assuming relation
+                    'renter_id' => $userId,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        }
+
+        // Return all chats
+        $chats = Chat::with(['latestMessage', 'property', 'owner', 'renter'])
+            ->where('owner_id', $userId)
+            ->orWhere('renter_id', $userId)
+            ->get();
+
+        return response()->json([
+            'chats' => $chats,
+            'rent_requests' => $rentRequests
         ]);
     }
-}
 
-// Return all chats
-$chats = Chat::with(['latestMessage', 'property', 'owner', 'renter'])
-    ->where('owner_id', $userId)
-    ->orWhere('renter_id', $userId)
-    ->get();
-
-return response()->json([
-    'chats' => $chats,
-    'rent_requests' => $rentRequests
-]);
+    public function deleteChat(int $chatId)
+{
+    try {
+        // Find the chat first to ensure it exists
+        $chat = Chat::findOrFail($chatId);
+        
+        // Delete all messages associated with this chat
+        Message::where('chat_id', $chatId)->delete();
+        
+        // Delete the chat itself
+        $chat->delete();
+        
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Chat and all associated messages have been deleted successfully'
+        ]);
+        
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Chat not found'
+        ], 404);
+        
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Failed to delete chat: ' . $e->getMessage()
+        ], 500);
     }
+}
 }
