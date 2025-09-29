@@ -128,6 +128,9 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/user/transactions', [PropertyPurchaseController::class, 'getAllUserTransactions']);
 });
 
+Route::middleware(['auth:api'])->group(function () {
+    Route::get('/checkouts/all', [CheckoutController::class, 'listCheckouts']);
+});
 
   // payment
 Route::get('/exchange-payment-token', [PaymentController::class, 'exchangePaymentToken']);
@@ -418,7 +421,7 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/checkout/{checkoutId}/owner/reject', [CheckoutController::class, 'handleOwnerReject']);
 
     // === Agent Actions ===
-    Route::post('/checkout/{checkoutId}/agent-decision', [CheckoutController::class, 'handleAgentDecision']);
+Route::post('/checkout/{id}/agent-decision', [CheckoutController::class, 'handleAgentDecision']);
 
     // === Query Checkouts ===
     Route::get('/checkouts/stats', [CheckoutController::class, 'getCheckoutStats']);

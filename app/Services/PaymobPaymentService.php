@@ -643,13 +643,14 @@ return ['success' => true, 'message' => 'Property purchase processed (purchase-)
                     ->first();
             }
 
-            if (!$purchase) {
-                $rentRequest = RentRequest::find($rentRequestId);
-                if (!$rentRequest) {
-                    \Log::error('Rent request not found', ['rent_request_id' => $rentRequestId]);
-                    return ['success' => false, 'message' => 'Rent request not found'];
-                }
-                    $checkIn  = Carbon::parse($rentRequest->check_in);
+if (!$purchase) {
+    $rentRequest = RentRequest::find($rentRequestId);
+    if (!$rentRequest) {
+        \Log::error('Rent request not found', ['rent_request_id' => $rentRequestId]);
+        return ['success' => false, 'message' => 'Rent request not found'];
+    }
+    
+    $checkIn  = Carbon::parse($rentRequest->check_in);
     $checkOut = Carbon::parse($rentRequest->check_out);
     $days     = max(1, $checkIn->diffInDays($checkOut));
 
@@ -659,139 +660,157 @@ return ['success' => true, 'message' => 'Property purchase processed (purchase-)
         return ['success' => false, 'message' => 'Property not found'];
     }
 
-    $pricePerNight = $property->price_per_night ?? $property->price ?? $property->daily_rent ??0;
+    $pricePerNight = $property->price_per_night ?? $property->price ?? $property->daily_rent ?? 0;
     if (!$pricePerNight || $pricePerNight <= 0) {
         \Log::error('Property pricing not configured', ['property_id' => $property->id]);
         return ['success' => false, 'message' => 'Property pricing not configured'];
     }
 
-$rentAmount    = ($pricePerNight ?? 0) * ($days ?? 1);
-$depositAmount = $pricePerNight ?? 0;
-$totalAmount   = bcadd($rentAmount ?? 0, $depositAmount ?? 0, 2);
+    $rentAmount    = ($pricePerNight ?? 0) * ($days ?? 1);
+    $depositAmount = $pricePerNight ?? 0;
+    $totalAmount   = bcadd($rentAmount ?? 0, $depositAmount ?? 0, 2);
 
-                $purchase = Purchase::create([
-                    'user_id'        => $userId,
-                    'property_id'    => $rentRequest->property_id,
-                    'rent_request_id'=> $rentRequest->id,
-                    'amount'         => $totalAmount ?? 0,
-                    'deposit_amount' => $depositAmount ?? 0,
-                    'payment_type'   => 'rent',
-                    'status'         => 'pending',
-                    'payment_gateway'=> 'paymob',
-                    'idempotency_key'=> uniqid('rent_'),
-                    'transaction_ref'=> $merchantOrderId,
-                    'metadata'       => ['flow' => 'rent', 'merchant_order_id' => $merchantOrderId],
-                ]);
-            }
+    // Calculate wallet portion: Total - Paymob Amount = Wallet
+    $userWallet = Wallet::where('user_id', $userId)->first();
+    $currentBalance = $userWallet ? $userWallet->balance : 0;
+    $paymobAmount = $amount;
+    $walletToUse = max(0, $totalAmount - $paymobAmount);
+    $walletToUse = min($walletToUse, $currentBalance);
 
-            try {
-                DB::transaction(function () use ($purchase, $obj, $amount) {
-                    $walletToUse = $purchase->metadata['wallet_to_use'] ?? 0;
-                    if ($walletToUse > 0) {
-                        $wallet = Wallet::lockForUpdate()->firstOrCreate(['user_id' => $purchase->user_id], ['balance' => 0]);
-                        $before = $wallet->balance;
-                        if ($wallet->balance < $walletToUse) {
-                            $walletToUse = min($wallet->balance, $walletToUse);
-                        }
-                        if ($walletToUse > 0) {
-                            $wallet->decrement('balance', $walletToUse);
-                            WalletTransaction::create([
-                                'wallet_id'      => $wallet->id,
-                                'amount'         => -$walletToUse,
-                                'type'           => 'rent_partial',
-                                'ref_id'         => $purchase->id,
-                                'ref_type'       => 'purchase',
-                                'description'    => 'Partial rent payment from wallet',
-                                'balance_before' => $before,
-                                'balance_after'  => $wallet->balance,
-                            ]);
-                        }
-                    }
-
-            $purchase->update([
-    'status'         => 'successful',
-    'transaction_ref'=> $obj['id'] ?? $purchase->transaction_ref,
-    'metadata'       => array_merge($purchase->metadata ?? [], ['paymob_txn' => $obj]),
-]);
-
-                   $rentRequest = RentRequest::lockForUpdate()->with('property')->find($purchase->rent_request_id);
-                    $rentAmount    = $purchase->amount - ($purchase->deposit_amount ?? 0);
-                    $depositAmount = $purchase->deposit_amount ?? ($rentRequest->price_per_night ?? 0);
-                    $totalAmount   = $purchase->amount;
-
-
-// Then verify the property exists
-if (!$rentRequest || !$rentRequest->property) {
-    \Log::error('RentRequest or Property not found', [
-        'rent_request_id' => $purchase->rent_request_id,
-        'has_property' => $rentRequest ? ($rentRequest->property ? 'yes' : 'no') : 'no_rent_request'
+    $purchase = Purchase::create([
+        'user_id'        => $userId,
+        'property_id'    => $rentRequest->property_id,
+        'rent_request_id'=> $rentRequest->id,
+        'amount'         => $totalAmount ?? 0,
+        'deposit_amount' => $depositAmount ?? 0,
+        'payment_type'   => 'rent',
+        'status'         => 'pending',
+        'payment_gateway'=> 'paymob',
+        'idempotency_key'=> uniqid('rent_'),
+        'transaction_ref'=> $merchantOrderId,
+        'metadata'       => ['flow' => 'rent', 'merchant_order_id' => $merchantOrderId, 'wallet_to_use' => $walletToUse],
     ]);
-    throw new \Exception('RentRequest or Property not found');
 }
 
-$escrow = EscrowBalance::firstOrCreate(
-    ['rent_request_id' => $purchase->rent_request_id],
-    [
-        'user_id'       => $purchase->user_id,
-        'owner_id'      => $rentRequest->property->owner_id,
-        'rent_amount'   => $rentAmount,
-        'deposit_amount'=> $depositAmount,
-        'total_amount'  => $totalAmount,
-        'status'        => 'locked',
-        'locked_at'     => now(),
-    ]
-);
+try {
+    DB::transaction(function () use ($purchase, $obj, $amount) {
+        // 1. Get wallet amount that was PLANNED to be used
+        $walletToUse = $purchase->metadata['wallet_to_use'] ?? 0;
+        
+        // 2. Deduct from wallet FIRST (if any)
+        if ($walletToUse > 0) {
+            $wallet = Wallet::lockForUpdate()->firstOrCreate(
+                ['user_id' => $purchase->user_id], 
+                ['balance' => 0]
+            );
+            
+            // Verify wallet still has the funds
+            if ($wallet->balance >= $walletToUse) {
+                $before = $wallet->balance;
+                $wallet->decrement('balance', $walletToUse);
 
-                    if ($rentRequest && $rentRequest->status !== 'paid') {
-                        $rentRequest->update(['status' => 'paid']);
-                    }
-
-                   try {
-    $ownerNotification = new \App\Notifications\RentPaidByRenter($rentRequest);
-    Notification::send($rentRequest->property->owner, $ownerNotification);
-    
-    $this->createUserNotificationFromWebsocketData(
-        $rentRequest->property->owner,
-        $ownerNotification,
-        NotificationPurpose::PAYMENT_SUCCESSFUL,
-        $purchase->user_id
-    );
-
-    $renterNotification = new \App\Notifications\RentPaymentSuccessful($rentRequest);
-    Notification::send($rentRequest->user, $renterNotification);
-    
-    $this->createUserNotificationFromWebsocketData(
-        $rentRequest->user,
-        $renterNotification,
-        NotificationPurpose::PAYMENT_SUCCESSFUL,
-        null
-    );
-} catch (\Exception $e) {
-    Log::warning('Notifications failed on rent callback', ['error' => $e->getMessage()]);
-}
-                });
-
-                \Log::info('Rent flow completed successfully', [
-                    'purchase_id' => $purchase->id,
-                    'rent_request_id' => $purchase->rent_request_id
+                WalletTransaction::create([
+                    'wallet_id'      => $wallet->id,
+                    'amount'         => -$walletToUse,
+                    'type'           => 'rent_partial',
+                    'ref_id'         => $purchase->id,
+                    'ref_type'       => 'purchase',
+                    'description'    => 'Partial rent payment from wallet',
+                    'balance_before' => $before,
+                    'balance_after'  => $wallet->balance,
                 ]);
-
-                return [
-                    'success'         => true,
-                    'message'         => 'Rent payment processed',
-                    'rent_request_id' => $purchase->rent_request_id,
-                    'purchase_id'     => $purchase->id,
-                ];
-            } catch (\Throwable $e) {
-                Log::error('Error processing rent callback: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
-                return ['success' => false, 'message' => 'Processing rent payment failed'];
+            } else {
+                // Wallet was drained between initiation and callback
+                \Log::warning('Wallet insufficient during callback', [
+                    'expected' => $walletToUse,
+                    'actual' => $wallet->balance,
+                    'purchase_id' => $purchase->id
+                ]);
             }
         }
 
-        \Log::warning('Unknown merchant order ID pattern', ['merchant_order_id' => $merchantOrderId]);
-        return ['success' => false, 'message' => 'Unknown flow'];
-    }
+        // 3. Update purchase status
+        $purchase->update([
+            'status'         => 'successful',
+            'transaction_ref'=> $obj['id'] ?? $purchase->transaction_ref,
+            'metadata'       => array_merge($purchase->metadata ?? [], ['paymob_txn' => $obj]),
+        ]);
 
+        // 4. Get rent request and calculate amounts
+        $rentRequest = RentRequest::lockForUpdate()->with('property')->find($purchase->rent_request_id);
+        
+        if (!$rentRequest || !$rentRequest->property) {
+            \Log::error('RentRequest or Property not found', [
+                'rent_request_id' => $purchase->rent_request_id,
+            ]);
+            throw new \Exception('RentRequest or Property not found');
+        }
+        
+        $rentAmount    = $purchase->amount - ($purchase->deposit_amount ?? 0);
+        $depositAmount = $purchase->deposit_amount ?? ($rentRequest->price_per_night ?? 0);
+        $totalAmount   = $purchase->amount;
+
+        // 5. Create escrow with total amount (wallet + paymob combined)
+        $escrow = EscrowBalance::firstOrCreate(
+            ['rent_request_id' => $purchase->rent_request_id],
+            [
+                'user_id'       => $purchase->user_id,
+                'owner_id'      => $rentRequest->property->owner_id,
+                'rent_amount'   => $rentAmount,
+                'deposit_amount'=> $depositAmount,
+                'total_amount'  => $totalAmount,
+                'status'        => 'locked',
+                'locked_at'     => now(),
+            ]
+        );
+
+        // 6. Send notifications
+        try {
+            $ownerNotification = new \App\Notifications\RentPaidByRenter($rentRequest);
+            Notification::send($rentRequest->property->owner, $ownerNotification);
+            
+            $this->createUserNotificationFromWebsocketData(
+                $rentRequest->property->owner,
+                $ownerNotification,
+                NotificationPurpose::PAYMENT_SUCCESSFUL,
+                $purchase->user_id
+            );
+
+            $renterNotification = new \App\Notifications\RentPaymentSuccessful($rentRequest);
+            Notification::send($rentRequest->user, $renterNotification);
+            
+            $this->createUserNotificationFromWebsocketData(
+                $rentRequest->user,
+                $renterNotification,
+                NotificationPurpose::PAYMENT_SUCCESSFUL,
+                null
+            );
+        } catch (\Exception $e) {
+            Log::warning('Notifications failed on rent callback', ['error' => $e->getMessage()]);
+        }
+    });
+
+    \Log::info('Rent flow completed successfully', [
+        'purchase_id' => $purchase->id,
+        'rent_request_id' => $purchase->rent_request_id
+    ]);
+
+    return [
+        'success'         => true,
+        'message'         => 'Rent payment processed',
+        'rent_request_id' => $purchase->rent_request_id,
+        'purchase_id'     => $purchase->id,
+    ];
+} catch (\Throwable $e) {
+    Log::error('Error processing rent callback: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+    return ['success' => false, 'message' => 'Processing rent payment failed'];
+}  // ← Single closing brace (closes the try-catch)
+}  // ← This closes the if (str_starts_with($merchantOrderId, 'rent-'))
+
+\Log::warning('Unknown merchant order ID pattern', ['merchant_order_id' => $merchantOrderId]);
+return ['success' => false, 'message' => 'Unknown flow'];
+}  // ← This closes the callBack() method
+        
     /**
      * Create payment key.
      * Accepts optional metadata['merchant_order_id'] to set merchant_order_id explicitly (useful for rent flow).
