@@ -12,6 +12,7 @@ use App\Models\Property;
 use App\Models\UserNotification;
 use App\Enums\NotificationPurpose;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
@@ -128,7 +129,7 @@ class CheckoutController extends Controller
                         return $this->handleUserCheckout($rentRequest, $user, $request);
 
                     case 'agent_decision':
-                        return $this->handleAgentDecision($rentRequest, $user, $request);
+    return $this->handleAgentDecisionInternal($rentRequest, $user, $request);
 
                     case 'owner_confirm':
                         return $this->handleOwnerConfirm($rentRequest, $user, $request);
@@ -284,64 +285,85 @@ class CheckoutController extends Controller
     /**
      * AGENT MAKES DECISION - For within_1_day, OR when owner_rejected
      */
-    public function handleAgentDecision($rentRequest, $user, $request)
-    {
-        if (!$user->hasRole('admin') && !$user->hasRole('agent')) {
-            return $this->error('Only admins or agents can make checkout decisions.', 403);
-        }
+/**
+ * AGENT MAKES DECISION - Direct API endpoint
+ */
+public function handleAgentDecision(Request $request, $id)
+{
+    $user = Auth::user();
 
-        $checkout = Checkout::where('rent_request_id', $rentRequest->id)
-            ->lockForUpdate()
-            ->first();
-
-        if (!$checkout) {
-            return $this->error('No checkout found for this rental.', 404);
-        }
-
-        // Agent can only decide:
-        // - if owner confirmation is NOT required (within_1_day), OR
-        // - if owner explicitly REJECTED (owner reported damages / requested agent review)
-        // Admin can still use admin_override endpoint for final overrides.
-        if (!in_array($checkout->owner_confirmation, ['not_required', 'rejected'])) {
-            return $this->error('Agent decision is not allowed at this stage. Owner must confirm/reject first.', 422);
-        }
-
-        if ($checkout->status !== 'pending') {
-            return $this->error('Checkout is no longer pending.', 422);
-        }
-
-        $depositReturnPercent = $request->input('deposit_return_percent', 0);
-        $rentReturned = $request->input('rent_returned', false);
-        $notes = $request->input('notes');
-
-        $checkout->update([
-            'deposit_return_percent' => $depositReturnPercent,
-            'agent_notes' => $notes,
-            'agent_decision' => [
-                'deposit_return_percent' => $depositReturnPercent,
-                'rent_returned' => $rentReturned,
-                'notes' => $notes,
-                'decided_by' => $user->id,
-                'decided_at' => Carbon::now()->toISOString(),
-            ],
-        ]);
-
-        // After agent decides, finalize immediately (for both within_1_day and after owner rejection)
-        $checkout->update([
-            'status' => 'confirmed',
-            'processed_at' => Carbon::now(),
-        ]);
-
-        Log::info('Agent decision made', [
-            'checkout_id' => $checkout->id,
-            'agent_id' => $user->id,
-            'deposit_return_percent' => $depositReturnPercent,
-            'rent_returned' => $rentReturned,
-        ]);
-
-        return $this->finalizeCheckout($checkout);
+    if (!in_array($user->role, ['admin', 'agent'])) {
+        return $this->error('Only admins or agents can make checkout decisions.', 403);
     }
 
+    try {
+        return DB::transaction(function () use ($id, $user, $request) {
+            $checkout = Checkout::where('id', $id)->lockForUpdate()->firstOrFail();
+            
+            return $this->processAgentDecisionLogic($checkout, $user, $request);
+        });
+    } catch (\Exception $e) {
+        Log::error('Agent decision error: ' . $e->getMessage());
+        return $this->error('Failed to process agent decision.', 500);
+    }
+}
+
+/**
+ * AGENT MAKES DECISION - Internal call from processCheckout
+ */
+private function handleAgentDecisionInternal($rentRequest, $user, $request)
+{
+    $checkout = Checkout::where('rent_request_id', $rentRequest->id)
+        ->lockForUpdate()
+        ->first();
+
+    if (!$checkout) {
+        return $this->error('No checkout found for this rental.', 404);
+    }
+
+    return $this->processAgentDecisionLogic($checkout, $user, $request);
+}
+
+/**
+ * Shared logic for agent decision processing
+ */
+private function processAgentDecisionLogic($checkout, $user, $request)
+{
+    if (!in_array($checkout->owner_confirmation, ['not_required', 'rejected'])) {
+        return $this->error('Agent decision is not allowed at this stage. Owner must confirm/reject first.', 422);
+    }
+
+    if ($checkout->status !== 'pending') {
+        return $this->error('Checkout is no longer pending.', 422);
+    }
+
+    $depositReturnPercent = $request->input('deposit_return_percent', 0);
+    $rentReturned = $request->input('rent_returned', false);
+    $notes = $request->input('notes');
+
+    $checkout->update([
+        'deposit_return_percent' => $depositReturnPercent,
+        'agent_notes' => $notes,
+        'agent_decision' => [
+            'deposit_return_percent' => $depositReturnPercent,
+            'rent_returned' => $rentReturned,
+            'notes' => $notes,
+            'decided_by' => $user->id,
+            'decided_at' => now()->toISOString(),
+        ],
+        'status' => 'confirmed',
+        'processed_at' => now(),
+    ]);
+
+    Log::info('Agent decision made', [
+        'checkout_id' => $checkout->id,
+        'agent_id' => $user->id,
+        'deposit_return_percent' => $depositReturnPercent,
+        'rent_returned' => $rentReturned,
+    ]);
+
+    return $this->finalizeCheckout($checkout);
+}
     /**
      * OWNER CONFIRMS - For after_1_day, monthly_mid_contract
      * Owner confirms means deposit goes back to renter (100%)
@@ -694,7 +716,7 @@ class CheckoutController extends Controller
 
             // Release escrow and update status
             $escrow->update([
-                'status' => 'released',
+                'status' => 'released_to_owner',
                 'released_at' => Carbon::now(),
             ]);
 
@@ -1056,56 +1078,71 @@ class CheckoutController extends Controller
     /**
      * List all checkouts for admin view
      */
-    public function listAdminCheckouts(Request $request)
-    {
-        $user = $request->user();
+   public function listAdminCheckouts(Request $request)
+{
+    $user = $request->user();
+        Log::error('listAdminCheckouts error: ' . $user->role, [
+            'user_id' => $user->id,
+        ]);
 
-        if (!$user->hasRole('admin') && !$user->hasRole('agent')) {
-            return $this->error('Only admins or agents can access all checkouts.', 403);
-        }
-
-        $perPage = min((int) $request->input('per_page', 20), 50);
-
-        try {
-            $query = Checkout::with([
-                'rentRequest' => function ($q) {
-                    $q->with([
-                        'property' => function ($subQ) {
-                            $subQ->select('id', 'title', 'location', 'owner_id');
-                        },
-                        'user' => function ($subQ) {
-                            $subQ->select('id', 'first_name', 'last_name', 'phone_number');
-                        }
-                    ]);
-                }
-            ]);
-
-            // Filter by status if provided
-            if ($request->has('status')) {
-                $query->where('status', $request->status);
-            }
-
-            // Filter by type if provided
-            if ($request->has('type')) {
-                $query->where('type', $request->type);
-            }
-
-            // Filter by date range if provided
-            if ($request->has('from') && $request->has('to')) {
-                $query->whereBetween('requested_at', [$request->from, $request->to]);
-            }
-
-            $checkouts = $query->orderBy('created_at', 'desc')->paginate($perPage);
-
-            return $this->success('Admin checkouts retrieved.', $checkouts);
-
-        } catch (Exception $e) {
-            Log::error('listAdminCheckouts error: ' . $e->getMessage(), [
-                'user_id' => $user->id,
-            ]);
-            return $this->error('Failed to retrieve admin checkouts.', 500);
-        }
+    if (!$user->hasRole('admin') && !$user->hasRole('agent')) {
+        return $this->error('Only admins or agents can access all checkouts.', 403);
     }
+
+    $perPage = min((int) $request->input('per_page', 20), 50);
+
+    try {
+        $query = Checkout::with([
+            'rentRequest' => function ($q) {
+                $q->with([
+                    'property' => function ($subQ) {
+                        $subQ->select('id', 'title', 'location', 'owner_id', 'agent_id');
+                    },
+                    'user' => function ($subQ) {
+                        $subQ->select('id', 'first_name', 'last_name', 'phone_number');
+                    }
+                ]);
+            }
+        ]);
+
+        // If agent → only their properties' checkouts
+        if ($user->hasRole('agent')) {
+            $query->whereHas('rentRequest.property', function ($q) use ($user) {
+                $q->where('agent_id', $user->id);
+            });
+        }
+
+        // Filter by status
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
+        }
+
+        // Filter by type
+        if ($request->has('type')) {
+            $query->where('type', $request->type);
+        }
+
+        // Filter by date range
+        if ($request->has('from') && $request->has('to')) {
+            $query->whereBetween('requested_at', [$request->from, $request->to]);
+        }
+
+        $checkouts = $query->orderBy('created_at', 'desc')->paginate($perPage);
+
+        if ($checkouts->isEmpty()) {
+            return $this->success('No checkouts found.', $checkouts);
+        }
+
+        return $this->success('Checkouts retrieved successfully.', $checkouts);
+
+    } catch (Exception $e) {
+        Log::error('listAdminCheckouts error: ' . $e->getMessage(), [
+            'user_id' => $user->id,
+        ]);
+        return $this->error('Failed to retrieve checkouts.', 500);
+    }
+}
+
 
     /**
      * Get checkout statistics for dashboard
@@ -1233,4 +1270,42 @@ class CheckoutController extends Controller
             return $this->error('Failed to retrieve transactions.', 500);
         }
     }
+public function listCheckouts(Request $request)
+{
+    try {
+        $user = auth()->user();
+
+        if (!$user->isAdmin() && !$user->isAgent()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only admins or agents can access checkouts.'
+            ], 403);
+        }
+
+        $checkouts = Checkout::with([
+                'rentRequest.property.owner',
+                'rentRequest.user'
+            ])
+            ->latest()
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $checkouts
+        ]);
+
+    } catch (\Exception $e) {
+        \Log::error('listCheckouts failed', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to retrieve checkouts.',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
 }

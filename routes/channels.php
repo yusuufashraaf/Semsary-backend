@@ -26,3 +26,9 @@ Broadcast::channel('chat.{chatId}', function ($user, $chatId) {
 Broadcast::channel('user.{userId}', function ($authUser, $userId) {
     return (int) $authUser->id === (int) $userId;
 });
+
+// Admin chat channel for real-time chat assignment updates
+Broadcast::channel('admin.chats.{userId}', function ($user, $userId) {
+    // Allow any authenticated user to join their own channel
+    return (int) $user->id === (int) $userId;
+});
