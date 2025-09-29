@@ -6,6 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Chat;
 use App\Models\User;
 use Illuminate\Http\Request;
+use App\Notifications\AgentAssigned;
+use App\Events\ChatAssigned;
+use App\Events\ChatUnassigned;
+use Illuminate\Support\Facades\Notification;
 
 class AdminChatController extends Controller
 {
@@ -53,6 +57,13 @@ class AdminChatController extends Controller
 
         $chat->renter_id = $request->agent_id;
         $chat->save();
+
+                // Get the agent
+        $agent = User::find($request->agent_id);
+        // Broadcast the event
+        broadcast(new ChatAssigned($chat->id, $agent))->toOthers();
+        // Send notification to the agent
+        $agent->notify(new AgentAssigned($chat, $chat->property));
 
         return response()->json([
             'success' => true,
