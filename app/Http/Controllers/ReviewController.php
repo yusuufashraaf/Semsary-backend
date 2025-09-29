@@ -36,7 +36,7 @@ class ReviewController extends Controller
     // Get properties from completed rent requests
     $rentRequests = RentRequest::with('property')
         ->where('user_id', $user->id)
-        ->where('status', 'completed')
+        ->where('status', 'paid')
         ->get();
 
         

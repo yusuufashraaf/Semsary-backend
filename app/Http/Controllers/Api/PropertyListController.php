@@ -15,6 +15,42 @@ class PropertyListController extends Controller
     {
         $query = PropertyList::with(['features', 'images']);
 
+        // Multiple ways to exclude current user's properties
+        $currentUserId = null;
+
+        // Method 1: Check if user is authenticated via Laravel auth
+        if (auth()->check()) {
+            $currentUserId = auth()->id();
+        }
+        
+        // Method 2: Check if user_id is passed in request (fallback)
+        elseif ($request->filled('user_id')) {
+            $currentUserId = $request->user_id;
+        }
+        
+        // Method 3: Check Authorization header for Bearer token
+        elseif ($request->bearerToken()) {
+            // If using Sanctum or Passport, try to get user from token
+            $user = auth('sanctum')->user() ?? auth('api')->user();
+            if ($user) {
+                $currentUserId = $user->id;
+            }
+        }
+
+        // Apply the filter if we found a user ID
+        if ($currentUserId) {
+            $query->where('owner_id', '!=', $currentUserId);
+        }
+
+        // Debug: Log what we found (remove this in production)
+        \Log::info('Property List Debug', [
+            'auth_check' => auth()->check(),
+            'auth_id' => auth()->id(),
+            'request_user_id' => $request->get('user_id'),
+            'current_user_id' => $currentUserId,
+            'bearer_token' => $request->bearerToken() ? 'present' : 'missing'
+        ]);
+
         // Search by title, description, or city
         if ($request->filled('search')) {
             $search = $request->search;
@@ -36,31 +72,31 @@ class PropertyListController extends Controller
         }
 
         // Status filter - Updated to handle multiple statuses
-      // Always filter by allowed statuses first
-$query->whereIn('property_state', ['Valid', 'Invalid']);
+        // Always filter by allowed statuses first
+        $query->whereIn('property_state', ['Valid', 'Invalid']);
 
-// Then apply user's specific status filter if provided AND valid
-if ($request->filled('status')) {
-    $status = $request->status;
-    
-    // Convert to array if needed
-    if (is_string($status) && strpos($status, ',') !== false) {
-        $statuses = array_map('trim', explode(',', $status));
-    } else if (is_array($status)) {
-        $statuses = $status;
-    } else {
-        $statuses = [$status];
-    }
-    
-    // Only apply user filter if it contains valid statuses
-    $allowedStatuses = ['Valid', 'Invalid'];
-    $validStatuses = array_intersect($statuses, $allowedStatuses);
-    
-    // Override base filter only if user selected valid statuses
-    if (!empty($validStatuses)) {
-        $query->whereIn('property_state', $validStatuses);
-    }
-}
+        // Then apply user's specific status filter if provided AND valid
+        if ($request->filled('status')) {
+            $status = $request->status;
+            
+            // Convert to array if needed
+            if (is_string($status) && strpos($status, ',') !== false) {
+                $statuses = array_map('trim', explode(',', $status));
+            } else if (is_array($status)) {
+                $statuses = $status;
+            } else {
+                $statuses = [$status];
+            }
+            
+            // Only apply user filter if it contains valid statuses
+            $allowedStatuses = ['Valid', 'Invalid'];
+            $validStatuses = array_intersect($statuses, $allowedStatuses);
+            
+            // Override base filter only if user selected valid statuses
+            if (!empty($validStatuses)) {
+                $query->whereIn('property_state', $validStatuses);
+            }
+        }
 
         if ($request->filled('beds')) {
             $beds = explode(',', $request->beds);

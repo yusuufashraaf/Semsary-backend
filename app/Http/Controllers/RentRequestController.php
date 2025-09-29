@@ -123,7 +123,7 @@ public function createRequest(Request $request)
         ->where('created_at', '>', Carbon::now()->subHour())
         ->count();
 
-    if ($recentRequests >= 5) {
+    if ($recentRequests >= 20) {
         return $this->error('Too many requests. Please wait before making another request.', 429);
     }
 
@@ -658,7 +658,7 @@ public function payForRequest(Request $request, $id)
 
 // 🔔 Notifications - Database first, then Pusher
                 try {
-                    $buyerNotification = new \App\Notifications\RentPaidBuyer($rentRequest);
+                    $buyerNotification = new \App\Notifications\RentPaidByRenter($rentRequest);
                     $this->createUserNotificationFromWebsocketData(
                         $user,
                         $buyerNotification,
@@ -670,7 +670,7 @@ public function payForRequest(Request $request, $id)
                 }
 
                 try {
-                    $ownerNotification = new \App\Notifications\RentPaidOwner($rentRequest);
+                    $ownerNotification = new \App\Notifications\RentPaidByRenter($rentRequest);
                     $this->createUserNotificationFromWebsocketData(
                         $property->owner,
                         $ownerNotification,
@@ -718,12 +718,6 @@ public function payForRequest(Request $request, $id)
             $iframeId    = config('payment.paymob_iframe_id');
 $redirectUrl = env('PAYMOB_IFRAME_URL') . "?payment_token={$paymentKey}";
 
-            // Mark rent request as pending
-            $rentRequest->update([
-                'status'          => 'pending',
-                'idempotency_key' => $idempotencyKey,
-                'payment_gateway' => 'paymob',
-            ]);
 
             return $this->success('Redirecting to Paymob for payment.', [
                 'payment_method' => 'wallet+paymob',
@@ -1029,7 +1023,7 @@ public function getUnavailableDates($propertyId)
 {
     try {
         // Define which statuses should block dates
-        $blockingStatuses = ['paid']; // add 'approved' if you use it
+        $blockingStatuses = ['paid','pending','confirmed']; // add 'approved' if you use it
 
         $dates = RentRequest::where('property_id', $propertyId)
             ->whereIn('status', $blockingStatuses)

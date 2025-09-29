@@ -23,7 +23,7 @@ return new class extends Migration
             UPDATE escrow_balances eb
             JOIN rent_requests rr ON eb.rent_request_id = rr.id
             JOIN properties p ON rr.property_id = p.id
-            SET eb.owner_id = p.user_id
+            SET eb.owner_id = p.owner_id
         ");
 
         // Step 3: Make owner_id NOT NULL and add constraints
