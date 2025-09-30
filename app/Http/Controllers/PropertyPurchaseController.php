@@ -79,9 +79,9 @@ class PropertyPurchaseController extends Controller
         }
     }
 
-    // ====================================================
-    // PAY FOR PROPERTY
-    // ====================================================
+// ====================================================
+// FIXED: PAY FOR PROPERTY with idempotency
+// ====================================================
 public function payForOwn(Request $request, $id)
 {
     $validator = \Validator::make($request->all(), [
@@ -97,11 +97,64 @@ public function payForOwn(Request $request, $id)
     if (!$user) return $this->error('Authentication required.', 401);
     if ($user->status !== 'active') return $this->error('Your account must be active.', 403);
 
-    $idempotencyKey = $request->input('idempotency_key') ?? Str::uuid()->toString();
-    $expectedTotal  = $request->input('expected_total');
+    // Generate idempotency key with timestamp window (5 minutes)
+    $timeWindow = floor(time() / 300); // 5-minute blocks
+    $idempotencyKey = $request->input('idempotency_key') 
+        ?? "pay-own-{$id}-{$user->id}-{$timeWindow}";
+    
+    $expectedTotal = $request->input('expected_total');
 
     try {
         return DB::transaction(function () use ($id, $user, $idempotencyKey, $expectedTotal) {
+            
+            // ✅ CHECK FOR EXISTING PENDING PURCHASE FIRST
+            $existingPurchase = PropertyPurchase::lockForUpdate()
+                ->where(function($q) use ($idempotencyKey, $id, $user) {
+                    $q->where('idempotency_key', $idempotencyKey)
+                      ->orWhere(function($q2) use ($id, $user) {
+                          $q2->where('property_id', $id)
+                             ->where('buyer_id', $user->id)
+                             ->where('created_at', '>', now()->subMinutes(10));
+                      });
+                })
+                ->where('status', 'pending')
+                ->orderBy('created_at', 'desc')
+                ->first();
+
+            if ($existingPurchase) {
+                // Return existing pending purchase
+                if ($existingPurchase->payment_gateway === 'paymob') {
+                    $paymob = app(\App\Services\PaymobPaymentService::class);
+                    $metadata = $existingPurchase->metadata ?? [];
+                    $shortfall = $metadata['shortfall'] ?? ($existingPurchase->amount - ($metadata['wallet_to_use'] ?? 0));
+                    
+                    // Regenerate payment key for existing purchase
+                    $paymentKey = $paymob->createPaymentKey([
+                        'amount_cents' => intval($shortfall * 100),
+                        'currency'     => 'EGP',
+                        'user'         => $user,
+                        'idempotency_key' => $idempotencyKey,
+                        'metadata'     => [
+                            'merchant_order_id' => $existingPurchase->merchant_order_id,
+                            'flow'           => 'buy',
+                            'property_id'    => $existingPurchase->property_id,
+                            'buyer_id'       => $user->id,
+                            'seller_id'      => $existingPurchase->seller_id,
+                            'wallet_to_use'  => $metadata['wallet_to_use'] ?? 0,
+                            'idempotency_key'=> $idempotencyKey,
+                        ],
+                    ]);
+
+                    return $this->success('Continuing existing purchase.', [
+                        'payment_method' => 'wallet+paymob',
+                        'iframe_url'     => env('PAYMOB_IFRAME_URL') . '?payment_token=' . $paymentKey,
+                        'shortfall'      => $shortfall,
+                        'wallet_balance' => $metadata['wallet_to_use'] ?? 0,
+                        'existing_purchase' => true,
+                    ]);
+                }
+            }
+
             // Validate property
             $property = Property::lockForUpdate()->find($id);
             if (!$property) return $this->error('Property not found.', 404);
@@ -130,8 +183,8 @@ public function payForOwn(Request $request, $id)
             );
             $walletBalance = $wallet->balance;
 
-            // ✅ Always generate merchant_order_id
-            $merchantOrderId = 'buy-' . $property->id . '-' . $user->id . '-' . Str::uuid()->toString();
+            // Generate merchant_order_id
+            $merchantOrderId = 'buy-' . $property->id . '-' . $user->id . '-' . time();
 
             if ($walletBalance < $totalAmount) {
                 // Not enough balance → Paymob flow
@@ -151,20 +204,19 @@ public function payForOwn(Request $request, $id)
                     'metadata'          => [
                         'wallet_to_use'  => $walletBalance,
                         'payment_method' => 'wallet+paymob',
+                        'shortfall'      => $shortfall,
                     ],
                 ]);
 
                 $paymob = app(\App\Services\PaymobPaymentService::class);
 
-                //  OLD: createOrder()  (don’t use it)
-                //  FIX: just call createPaymentKey with merchant_order_id
                 $paymentKey = $paymob->createPaymentKey([
                     'amount_cents' => intval($shortfall * 100),
                     'currency'     => 'EGP',
                     'user'         => $user,
                     'idempotency_key' => $idempotencyKey,
                     'metadata'     => [
-                        'merchant_order_id' => $merchantOrderId, // ✅ pass to service
+                        'merchant_order_id' => $merchantOrderId,
                         'flow'           => 'buy',
                         'property_id'    => $property->id,
                         'buyer_id'       => $user->id,
@@ -174,7 +226,6 @@ public function payForOwn(Request $request, $id)
                     ],
                 ]);
 
-                // ✅ Save Paymob order id from token response, if available
                 $purchase->update([
                     'paymob_order_id' => $merchantOrderId,
                 ]);
@@ -218,41 +269,38 @@ public function payForOwn(Request $request, $id)
                 'scheduled_release_at'  => now()->addMinute(),
             ]);
 
-// 🔔 Notifications
-// Declare notification objects
-$buyerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
-$sellerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
+            // Notifications
+            $buyerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
+            $sellerNotification = new \App\Notifications\PropertyPurchaseSuccessful($purchase);
 
-// Always create database notifications first
-try {
-    $this->createUserNotificationFromWebsocketData(
-        $user,
-        $buyerNotification,
-        NotificationPurpose::PURCHASE_COMPLETED,
-        null
-    );
-} catch (\Exception $e) {
-    \Log::warning('Failed to create buyer database notification', ['error' => $e->getMessage()]);
-}
+            try {
+                $this->createUserNotificationFromWebsocketData(
+                    $user,
+                    $buyerNotification,
+                    NotificationPurpose::PURCHASE_COMPLETED,
+                    null
+                );
+            } catch (\Exception $e) {
+                \Log::warning('Failed to create buyer database notification', ['error' => $e->getMessage()]);
+            }
 
-try {
-    $this->createUserNotificationFromWebsocketData(
-        $purchase->seller,
-        $sellerNotification,
-        NotificationPurpose::PROPERTY_PURCHASE_REQUESTED,
-        $user->id
-    );
-} catch (\Exception $e) {
-    \Log::warning('Failed to create seller database notification', ['error' => $e->getMessage()]);
-}
+            try {
+                $this->createUserNotificationFromWebsocketData(
+                    $purchase->seller,
+                    $sellerNotification,
+                    NotificationPurpose::PROPERTY_PURCHASE_REQUESTED,
+                    $user->id
+                );
+            } catch (\Exception $e) {
+                \Log::warning('Failed to create seller database notification', ['error' => $e->getMessage()]);
+            }
 
-// Try Pusher notifications separately
-try {
-    \Notification::send($user, $buyerNotification);
-    \Notification::send($purchase->seller, $sellerNotification);
-} catch (\Exception $e) {
-    \Log::warning('Pusher notification failed on payForOwn success', ['error' => $e->getMessage()]);
-}
+            try {
+                \Notification::send($user, $buyerNotification);
+                \Notification::send($purchase->seller, $sellerNotification);
+            } catch (\Exception $e) {
+                \Log::warning('Pusher notification failed on payForOwn success', ['error' => $e->getMessage()]);
+            }
 
             return $this->success('Purchase successful via wallet.', [
                 'purchase'       => $purchase,
@@ -265,7 +313,6 @@ try {
         return $this->error('Property purchase failed.', 500);
     }
 }
-
 
     // ====================================================
     // CANCEL PURCHASE
