@@ -64,8 +64,8 @@ Route::post('/send-message',[NewMessageController::class,'sendMessage']);
 Route::post('/broadcasting/auth',[NewMessageController::class,'authenticateBroadcast']);
 Route::get('/fetch-messages/{chatId}',[NewMessageController::class,'fetchMessages']);
 Route::get('/delete/{chatId}',[NewMessageController::class,'deleteChat']);
-Route::get('/fetch-chats/{userId}',[NewMessageController::class,'fetchChats']);
-Route::get('/fetch-available-chats/{userId}',[NewMessageController::class,'fetchAvailableChats']);
+Route::get('/fetch-chats/{userId}',[NewMessageController::class,'fetchAvailableChats']);
+//Route::get('/fetch-available-chats/{userId}',[NewMessageController::class,'fetchAvailableChats']);
 
 
 // Public routes
@@ -339,7 +339,7 @@ Route::middleware('auth:api')->prefix('user/{id}')->group(function ($id) {
     Route::get('/reviews', [UserController::class, 'reviews']);
     Route::get('/properties', [UserController::class, 'properties']);
     Route::get('/notifications', [UserController::class, 'notifications']);
-    Route::get('/notificationread/{notificationId}', [UserController::class, 'markAsRead']);
+    // Route::get('/notificationread/{notificationId}', [UserController::class, 'markAsRead']);
     Route::get('/purchases', [UserController::class, 'purchases']);
     Route::get('/bookings', [UserController::class, 'bookings']);
     Route::get('/wishlists', [UserController::class, 'wishlists']);

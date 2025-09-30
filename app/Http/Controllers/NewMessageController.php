@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Events\MessageSent;
 use App\Models\Message;
+use App\Models\Purchase;
 use App\Models\Chat;
+use App\Models\User;
 use App\Models\RentRequest;
 
 class NewMessageController extends Controller
@@ -40,57 +42,69 @@ class NewMessageController extends Controller
         ]);
     }
 
-    public function fetchChats($userId)
-    {
+    // public function fetchChats($userId)
+    // {
+
+    //     $user = User::find("id",$userId);
+    //     if($user->role == "agent"){
+    //         $chats = Chat::with(['latestMessage', 'property', 'owner', 'renter'])
+    //         ->where('owner_id', $userId)
+    //         ->orWhere('renter_id', $userId) 
+    //         ->get();
+    //     }
+    //     else{
+    //         $chats = Chat::with(['latestMessage', 'property', 'owner', 'renter'])
+    //         ->where('owner_id', $userId)
+    //         ->get();
+    //     }
+
+    //     return response()->json([
+    //         'chats' => $chats,
+    //         'total_unread' => $chats->sum('unread_count')
+    //     ]);
+    // }
+
+    public function fetchAvailableChats($userId)
+{
+    // Get completed purchases
+    $rentRequests = Purchase::where("user_id", $userId)->get();
+
+    // Create missing chats - using current user as both owner and renter initially
+    foreach ($rentRequests as $rentRequest) {
+        $existingChat = Chat::where('property_id', $rentRequest->property_id)
+            ->where('owner_id', $userId) // Check if user already has a chat for this property
+            ->first();
+        
+        if (!$existingChat) {
+            Chat::create([
+                'property_id' => $rentRequest->property_id,
+                'owner_id' => $userId, // Current user as owner temporarily
+                'renter_id' => $userId, // Current user as renter temporarily
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+    }
+
+    $user = User::find($userId); // Fixed: removed "id" parameter
+    
+    if($user->role == "agent"){
         $chats = Chat::with(['latestMessage', 'property', 'owner', 'renter'])
             ->where('owner_id', $userId)
             ->orWhere('renter_id', $userId) 
             ->get();
-
-        return response()->json([
-            'chats' => $chats,
-            'total_unread' => $chats->sum('unread_count')
-        ]);
-    }
-
-    public function fetchAvailableChats($userId)
-    {
-        // Get completed/paid rent requests
-        $rentRequests = RentRequest::where('user_id', $userId)
-            ->whereIn('status', ['completed', 'paid'])
-            ->get();
-
-        // Create missing chats
-        foreach ($rentRequests as $rentRequest) {
-            $existingChat = Chat::where('property_id', $rentRequest->property_id)
-                ->where(function($query) use ($userId) {
-                    $query->where('owner_id', $userId)
-                        ->orWhere('renter_id', $userId);
-                })
-                ->first();
-            
-            if (!$existingChat) {
-                Chat::create([
-                    'property_id' => $rentRequest->property_id,
-                    'owner_id' => $rentRequest->property->owner_id, // assuming relation
-                    'renter_id' => $userId,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-            }
-        }
-
-        // Return all chats
+    } else {
         $chats = Chat::with(['latestMessage', 'property', 'owner', 'renter'])
             ->where('owner_id', $userId)
-            ->orWhere('renter_id', $userId)
             ->get();
-
-        return response()->json([
-            'chats' => $chats,
-            'rent_requests' => $rentRequests
-        ]);
     }
+
+    return response()->json([
+        'chats' => $chats,
+        'total_unread' => $chats->sum('unread_count')
+        //'rent_requests' => $rentRequests
+    ]);
+}
 
     public function deleteChat(int $chatId)
 {
