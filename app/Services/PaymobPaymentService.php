@@ -168,48 +168,49 @@ class PaymobPaymentService extends BasePaymentService
     }
 
     //  Initiate buy
+// FIXED: Initiate buy with better idempotency
 public function initiatePropertyPurchase(Request $request, $propertyId): array
 {
     $user = auth()->user();
     $amount = $request->input('amount');
     
-    // Use consistent idempotency key based on user + property + date
-    // This ensures same-day requests reuse the same purchase
+    // Use timestamp-based idempotency key (10-minute window)
+    $timeWindow = floor(time() / 600); // 10-minute blocks
     $idempotencyKey = $request->input('idempotency_key') 
-        ?? "buy-{$propertyId}-{$user->id}-" . date('Ymd');
+        ?? "buy-{$propertyId}-{$user->id}-{$timeWindow}";
 
     return DB::transaction(function () use ($propertyId, $user, $amount, $request, $idempotencyKey) {
         
-        // Step 1: Clean up very old expired purchases (older than 24 hours)
+        // Step 1: Clean up old expired purchases
         PropertyPurchase::where('property_id', $propertyId)
             ->where('buyer_id', $user->id)
             ->where('status', 'pending')
-            ->where('created_at', '<', now()->subDay())
+            ->where('created_at', '<', now()->subHours(2))
             ->update(['status' => 'expired']);
 
-        // Step 2: Check for existing purchase by idempotency_key FIRST
+        // Step 2: Check for existing RECENT pending purchase by idempotency key
         $existingPurchase = PropertyPurchase::lockForUpdate()
             ->where('idempotency_key', $idempotencyKey)
             ->where('status', 'pending')
             ->first();
 
-        // Step 3: If not found by idempotency, check by user+property
+        // Step 3: If not found by key, check by user+property (last 15 minutes)
         if (!$existingPurchase) {
             $existingPurchase = PropertyPurchase::lockForUpdate()
                 ->where('property_id', $propertyId)
                 ->where('buyer_id', $user->id)
                 ->where('status', 'pending')
-                ->where('created_at', '>', now()->subHours(2)) // Only recent ones
+                ->where('created_at', '>', now()->subMinutes(15))
                 ->orderBy('created_at', 'desc')
                 ->first();
         }
 
         if ($existingPurchase) {
-            // Reuse existing purchase
+            // Reuse existing purchase - just update the key and amount
             $existingPurchase->update([
                 'amount' => $amount,
                 'seller_id' => $request->input('seller_id'),
-                'idempotency_key' => $idempotencyKey, // Update key
+                'idempotency_key' => $idempotencyKey,
                 'updated_at' => now()
             ]);
 
@@ -276,6 +277,7 @@ public function initiatePropertyPurchase(Request $request, $propertyId): array
         ];
     });
 }
+
 
 
 
