@@ -16,7 +16,7 @@ class AdminChatController extends Controller
     // List all chats with possible agents
     public function index()
     {
-        $chats = Chat::with(['property', 'assignedAgent'])->paginate(10);
+        $chats = Chat::with(['property', 'assignedAgent','owner','property.owner'])->paginate(10);
         $agents = User::agents()->get(['id', 'first_name', 'last_name', 'email']); // only agents
 
         return response()->json([
