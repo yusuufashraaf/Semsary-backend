@@ -89,7 +89,7 @@ class NewMessageController extends Controller
     $user = User::find($userId); // Fixed: removed "id" parameter
     
     if($user->role == "agent"){
-        $chats = Chat::with(['latestMessage', 'property', 'owner', 'renter'])
+        $chats = Chat::with(['latestMessage', 'property', 'owner', 'renter','property.owner'])
             ->where('owner_id', $userId)
             ->orWhere('renter_id', $userId) 
             ->get();
