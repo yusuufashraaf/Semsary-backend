@@ -55,7 +55,7 @@ public function notifications(int $id)
                 'user_id' => $n->notifiable_id,
                 'title' => $data['title'] ?? 'Notification',
                 'message' => $data['message'] ?? '',
-                'feedback' => $data['feedback'] ?? null,
+                'feedback' => $data['feedback'] ?? null,    
                 'is_read' => $n->read_at !== null,
                 'created_at' => $n->created_at->toDateTimeString(),
                 'updated_at' => $n->updated_at->toDateTimeString(),
