@@ -735,7 +735,14 @@ try {
             'transaction_ref'=> $obj['id'] ?? $purchase->transaction_ref,
             'metadata'       => array_merge($purchase->metadata ?? [], ['paymob_txn' => $obj]),
         ]);
-
+// 3b. Update rent request status to 'paid'
+$rentRequest = RentRequest::lockForUpdate()->find($purchase->rent_request_id);
+if ($rentRequest && $rentRequest->status === 'confirmed') {
+    $rentRequest->update(['status' => 'paid']);
+    \Log::info('RentRequest status updated to paid', [
+        'rent_request_id' => $rentRequest->id
+    ]);
+}
         // 4. Get rent request and calculate amounts
         $rentRequest = RentRequest::lockForUpdate()->with('property')->find($purchase->rent_request_id);
         
