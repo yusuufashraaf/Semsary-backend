@@ -45,7 +45,7 @@ public function notifications(int $id)
 {
     $notifications = Notification::where('notifiable_id', $id)
         ->where('notifiable_type', User::class)
-        ->whereNull('read_at') // 👈 only unread
+        //->whereNull('read_at') // 👈 only unread
         ->orderBy('created_at', 'desc')
         ->get()
         ->map(function($n) {
