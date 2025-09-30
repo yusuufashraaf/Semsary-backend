@@ -168,40 +168,69 @@ class PaymobPaymentService extends BasePaymentService
     }
 
     //  Initiate buy
-    public function initiatePropertyPurchase(Request $request, $propertyId): array
-    {
-        $user = auth()->user();
-        $amount = $request->input('amount');
+// FIXED: Initiate buy with better idempotency
+public function initiatePropertyPurchase(Request $request, $propertyId): array
+{
+    $user = auth()->user();
+    $amount = $request->input('amount');
+    
+    // Use timestamp-based idempotency key (10-minute window)
+    $timeWindow = floor(time() / 600); // 10-minute blocks
+    $idempotencyKey = $request->input('idempotency_key') 
+        ?? "buy-{$propertyId}-{$user->id}-{$timeWindow}";
 
-        // Step 1: Clean up any old pending purchases for this user+property
+    return DB::transaction(function () use ($propertyId, $user, $amount, $request, $idempotencyKey) {
+        
+        // Step 1: Clean up old expired purchases
         PropertyPurchase::where('property_id', $propertyId)
             ->where('buyer_id', $user->id)
             ->where('status', 'pending')
-            ->where('created_at', '<', now()->subHour()) // older than 1 hour
+            ->where('created_at', '<', now()->subHours(2))
             ->update(['status' => 'expired']);
 
-        // Step 2: Check if user already has a recent pending purchase
-        $existingPurchase = PropertyPurchase::where('property_id', $propertyId)
-            ->where('buyer_id', $user->id)
+        // Step 2: Check for existing RECENT pending purchase by idempotency key
+        $existingPurchase = PropertyPurchase::lockForUpdate()
+            ->where('idempotency_key', $idempotencyKey)
             ->where('status', 'pending')
             ->first();
 
+        // Step 3: If not found by key, check by user+property (last 15 minutes)
+        if (!$existingPurchase) {
+            $existingPurchase = PropertyPurchase::lockForUpdate()
+                ->where('property_id', $propertyId)
+                ->where('buyer_id', $user->id)
+                ->where('status', 'pending')
+                ->where('created_at', '>', now()->subMinutes(15))
+                ->orderBy('created_at', 'desc')
+                ->first();
+        }
+
         if ($existingPurchase) {
-            // Reuse existing purchase - just update the amount and timestamp
+            // Reuse existing purchase - just update the key and amount
             $existingPurchase->update([
                 'amount' => $amount,
                 'seller_id' => $request->input('seller_id'),
+                'idempotency_key' => $idempotencyKey,
                 'updated_at' => now()
             ]);
 
+            $merchantOrderId = $existingPurchase->merchant_order_id 
+                ?? "buy-{$propertyId}-{$user->id}-{$existingPurchase->id}";
+            
+            if (!$existingPurchase->merchant_order_id) {
+                $existingPurchase->update(['merchant_order_id' => $merchantOrderId]);
+            }
+            
             $paymentKey = $this->createPaymentKey([
                 'amount_cents'    => intval($amount * 100),
                 'currency'        => 'EGP',
                 'user'            => $user,
-                'idempotency_key' => $existingPurchase->idempotency_key,
+                'idempotency_key' => $idempotencyKey,
                 'metadata'        => [
                     'flow' => 'buy',
-                    'merchant_order_id' => "buy-{$propertyId}-{$user->id}-{$existingPurchase->id}"
+                    'merchant_order_id' => $merchantOrderId,
+                    'property_id' => $propertyId,
+                    'buyer_id' => $user->id,
                 ]
             ]);
 
@@ -213,19 +242,20 @@ class PaymobPaymentService extends BasePaymentService
             ];
         }
 
-        // Step 3: Create new purchase only if no pending exists
-        $idempotencyKey = "buy-{$propertyId}-{$user->id}-" . time();
-
+        // Step 4: Create new purchase
         $purchase = PropertyPurchase::create([
-            'property_id'    => $propertyId,
-            'buyer_id'       => $user->id,
-            'seller_id'      => $request->input('seller_id'),
-            'amount'         => $amount,
-            'status'         => 'pending',
-            'payment_gateway'=> 'paymob',
-            'idempotency_key'=> $idempotencyKey,
-            'metadata'       => ['flow' => 'buy'],
+            'property_id'     => $propertyId,
+            'buyer_id'        => $user->id,
+            'seller_id'       => $request->input('seller_id'),
+            'amount'          => $amount,
+            'status'          => 'pending',
+            'payment_gateway' => 'paymob',
+            'idempotency_key' => $idempotencyKey,
+            'metadata'        => ['flow' => 'buy'],
         ]);
+
+        $merchantOrderId = "buy-{$propertyId}-{$user->id}-{$purchase->id}";
+        $purchase->update(['merchant_order_id' => $merchantOrderId]);
 
         $paymentKey = $this->createPaymentKey([
             'amount_cents'    => intval($amount * 100),
@@ -234,7 +264,9 @@ class PaymobPaymentService extends BasePaymentService
             'idempotency_key' => $idempotencyKey,
             'metadata'        => [
                 'flow' => 'buy',
-                'merchant_order_id' => "buy-{$propertyId}-{$user->id}-{$purchase->id}"
+                'merchant_order_id' => $merchantOrderId,
+                'property_id' => $propertyId,
+                'buyer_id' => $user->id,
             ]
         ]);
 
@@ -243,7 +275,10 @@ class PaymobPaymentService extends BasePaymentService
             'property_purchase_id'  => $purchase->id,
             'payment_key'           => $paymentKey,
         ];
-    }
+    });
+}
+
+
 
 
     // CALLBACK 
