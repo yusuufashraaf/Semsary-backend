@@ -23,11 +23,13 @@ return [
         'http://127.0.0.1:3000',
         'http://localhost:5173',
         'http://127.0.0.1:5173',
+                'https://semsary-v1.netlify.app',
     ],
 
     // Regex: allow any Vercel deployment (preview or production)
     'allowed_origins_patterns' => [
         '/^https:\/\/([a-z0-9-]+)\.vercel\.app$/',
+                '/^https:\/\/([a-z0-9-]+)\.netlify\.app$/', // allow Netlify subdomains
     ],
 
     'allowed_headers' => ['*'],
