@@ -4,6 +4,8 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Models\User;
+
 
 class UserResource extends JsonResource
 {
@@ -12,6 +14,7 @@ class UserResource extends JsonResource
      *
      * @return array<string, mixed>
      */
+
     public function toArray(Request $request): array
     {
         // This array defines the exact structure of the JSON response.
@@ -23,6 +26,8 @@ class UserResource extends JsonResource
             'email'        => $this->email,
             'phone_number' => $this->phone_number,
             'role'         => $this->role,
+            'id_image_url'         => $this->id_image_url,
+            'id_state'         => $this->id_state,
             'status'       => $this->status,
             'created_at'   => $this->created_at?->toDateTimeString(), // Format dates for consistency
             'email_verified_at' => $this->email_verified_at?->format('Y-m-d H:i:s'),

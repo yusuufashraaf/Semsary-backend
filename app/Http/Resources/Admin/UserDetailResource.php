@@ -25,7 +25,7 @@ class UserDetailResource extends JsonResource
             'phone_verified_at' => $this->phone_verified_at?->format('Y-m-d H:i:s'),
             'id_image_url' => $this->id_image_url,
             'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
-
+            'id_state' => $this->id_state,
             // Actual counts from loaded relationships
             'properties_count' => $this->properties_count ?? 0,
             'transactions_count' => $this->transactions_count ?? 0,

@@ -78,7 +78,7 @@ class AdminAction extends Model
         return self::create([
             'admin_id' => $adminId,
             'user_id' => $userId,
-            'action' => $action,
+        'action'   => (string) $action,   
             'reason' => $reason,
         ]);
     }

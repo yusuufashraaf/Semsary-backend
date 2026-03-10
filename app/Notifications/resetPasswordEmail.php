@@ -37,14 +37,13 @@ class resetPasswordEmail extends Notification
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $resetUrl = config('app.frontend_url') . '/reset-password?token=' . $this->token . '&email=' . urlencode($notifiable->getEmailForPasswordReset());
-
+    $resetUrl = rtrim(config('app.frontend_url'), '/') . '/reset-password?token=' . $this->token . '&email=' . urlencode($notifiable->getEmailForPasswordReset());
         return (new MailMessage)
             ->subject('Reset Your Password')
             ->greeting('Hello ' . $notifiable->name . ',')
             ->line('We received a request to reset the password for your account.')
             ->action('Reset Password', $resetUrl) // The button will now have the correct link
-            ->line('This password reset link will expire in 60 minutes.')
+            ->line('This password reset link will expire in one minute.')
             ->line('If you did not request a password reset, no further action is required.')
             ->salutation('Regards,
         ' . config('app.name'));

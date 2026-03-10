@@ -33,19 +33,42 @@ class GoogleAuthController extends Controller
         $frontendUrl = env('FRONTEND_URL', 'http://localhost:5173');
 
         try {
-            $googleUser = Socialite::driver('google')->stateless()->user();
+            // $googleUser = Socialite::driver('google')->stateless()->user();
 
-            // Find or create the user
-            $user = User::updateOrCreate(
-                ['email' => $googleUser->email],
-                [
-                    'google_id' => $googleUser->id,
-                    'first_name' => $googleUser->user['given_name'] ?? 'User',
-                    'last_name' => $googleUser->user['family_name'] ?? '',
-                    'email_verified_at' => now(),
-                    'password' => bcrypt(Str::random(24)) // Only set if new user
-                ]
-            );
+            // // Find or create the user
+            // $user = User::updateOrCreate(
+            //     ['email' => $googleUser->email],
+            //     [
+            //         'google_id' => $googleUser->id,
+            //         'first_name' => $googleUser->user['given_name'] ?? 'User',
+            //         'last_name' => $googleUser->user['family_name'] ?? '',
+            //         'email_verified_at' => now(),
+            //         'password' => bcrypt(Str::random(24)) // Only set if new user
+            //     ]
+            // );
+            $googleUser = Socialite::driver('google')->stateless()->user();
+        
+        $user = User::where('email', $googleUser->email)->first();
+
+        if ($user) {
+            // Update existing user - preserve existing data
+            $user->update([
+                'google_id' => $googleUser->id,
+                'auth_method' => 'google',
+                'email_verified_at' => $user->email_verified_at ?? now(),
+            ]);
+        } else {
+            // Create new Google user
+            $user = User::create([
+                'email' => $googleUser->email,
+                'google_id' => $googleUser->id,
+                'first_name' => $googleUser->user['given_name'] ?? 'User',
+                'last_name' => $googleUser->user['family_name'] ?? '',
+                'email_verified_at' => now(),
+                'auth_method' => 'google',
+                'password' => bcrypt(Str::random(24))
+            ]);
+        }
 
             // Generate tokens
             $accessToken = auth('api')->login($user);
@@ -54,10 +77,11 @@ class GoogleAuthController extends Controller
                 return redirect($frontendUrl . '/login?error=auth_failed');
             }
 
+
             $refreshToken = Str::random(60);
             $this->storeRefreshToken($user, $refreshToken);
 
-            // Option 1: Redirect with temporary token in URL
+            //  Redirect with temporary token in URL
             // Frontend will exchange this for cookies via API call
             $tempToken = Str::random(32);
             cache()->put('oauth_temp_' . $tempToken, [
@@ -66,7 +90,9 @@ class GoogleAuthController extends Controller
                 'refresh_token' => $refreshToken
             ], now()->addMinutes(1)); // Expires in 1 minute
 
-            return redirect($frontendUrl . '/auth/callback?token=' . $tempToken);
+            return redirect(
+                rtrim($frontendUrl, '/') . '/auth/callback?token=' . urlencode($tempToken)
+            );
 
         } catch (\Exception $e) {
             Log::error('Google Auth Failed Exception: ' . $e->getMessage(), [
@@ -83,6 +109,7 @@ class GoogleAuthController extends Controller
      */
     public function exchangeToken(Request $request)
     {
+         Log::info('Exchange token called', ['token' => $request->token]);
         $request->validate([
             'token' => 'required|string'
         ]);
@@ -101,7 +128,7 @@ class GoogleAuthController extends Controller
             'user' => User::find($tokenData['user_id']),
             'access_token' => $tokenData['access_token'],
             'token_type' => 'bearer',
-            'expires_in' => config('jwt.ttl') * 60
+            'expires_in' => 1 * 60
         ]);
 
         // Also set cookies for subsequent requests

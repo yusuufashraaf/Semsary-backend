@@ -28,21 +28,21 @@ class StorePropertyRequest extends FormRequest
             'bedrooms'    => 'required|integer|min:1',
             'bathrooms'   => 'required|integer|min:1',
             'type'          => 'required|in:Apartment,Villa,Duplex,Roof,Land',
-            'price'         => 'required|numeric|min:3000',
+            'price'         => 'required|numeric|min:1000',
             'price_type'    => 'required|in:FullPay,Monthly,Daily',
             'location'      => 'required|array',
             'location.address' => 'required|string|max:255',
             'location.lat'  => 'numeric|between:-90,90',
             'location.lng'  => 'numeric|between:-180,180',
             'size'          => 'required|integer|min:60',
-            'property_state'=> 'in:Valid,Invalid,Pending,Rented,Sold',
+            'property_state'=> 'in:Valid,Rejected|Invalid,Pending,Rented,Sold',
             'status'        => 'required|in:sale,rent',
             // Images
             'images' => 'required|array',
             'images.*' => 'file|mimes:jpg,jpeg,png,webp|max:2048',
 
             // Documents
-            'documents' => 'nullable|array',
+            'documents' => 'required|array',
             'documents.*' => 'file|mimes:pdf,doc,docx,png,jpg,jpeg|max:5120',
     
         ];

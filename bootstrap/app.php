@@ -9,6 +9,10 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         // run CORS before everything else
         $middleware->prepend(HandleCors::class);
+        $middleware->alias([
+    'purchase.limit' => \App\Http\Middleware\PurchaseRateLimit::class,
+]);
+
     })
     ->withRouting(
         web: __DIR__.'/../routes/web.php',

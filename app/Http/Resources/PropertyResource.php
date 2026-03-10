@@ -44,6 +44,9 @@ class PropertyResource extends JsonResource
                 'name' => trim($this->owner?->first_name . ' ' . $this->owner?->last_name),
                 'avatar' => strtoupper(substr($this->owner->first_name, 0, 1) . substr($this->owner->last_name, 0, 1)),
                 'joinDate' => optional($this->owner->created_at)->format('Y'),
+                    'email' => $this->owner->email,
+    'phone' => $this->owner->phone_number ?? null,
+
             ] : null,
 
             // Optional extras

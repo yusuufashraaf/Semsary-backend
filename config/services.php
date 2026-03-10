@@ -52,5 +52,21 @@ return [
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
         'redirect' => env("GOOGLE_CALLBACK_URL"),
     ],
+    'openrouter' => [
+        'key' => env('OPENROUTER_API_KEY'),
+    ],
 
+'paymob' => [
+    'base_url'       => env('PAYMOB_BASE_URL', 'https://accept.paymob.com'),
+    'api_key'        => env('PAYMOB_API_KEY'),
+    'integration_id' => array_map('trim', explode(',', env('PAYMOB_INTEGRATION_ID', ''))),
+    'hmac_secret'    => env('PAYMOB_HMAC_SECRET'),
+],
+
+
+'paypal' => [
+    'client_id' => env('PAYPAL_CLIENT_ID'),
+    'client_secret' => env('PAYPAL_CLIENT_SECRET'),
+    'base_url' => env('PAYPAL_BASE_URL', 'https://api.sandbox.paypal.com'), 
+],
 ];

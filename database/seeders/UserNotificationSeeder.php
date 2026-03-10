@@ -4,10 +4,10 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
-use App\Models\Notification;
+use App\Models\UserNotification;
 use App\Models\User;
 
-class NotificationSeeder extends Seeder
+class UserNotificationSeeder extends Seeder
 {
     public function run(): void
     {
@@ -18,7 +18,7 @@ class NotificationSeeder extends Seeder
             $count = rand(3, 5);
             
             for ($i = 0; $i < $count; $i++) {
-                Notification::create([
+                UserNotification::create([
                     'user_id' => $user->id,
                     'title' => $this->getRandomTitle(),
                     'message' => $this->getRandomMessage(),
